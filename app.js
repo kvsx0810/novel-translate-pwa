@@ -555,10 +555,10 @@ function closeSettings() {
 }
 
 // ── Setup Screen Logic ────────────────────────────────────────────────────────
-let setupReady = { engine: false, meta: false, epub: false };
+let setupReady = { engine: false, epub: false };
 
 function checkSetupReady() {
-  document.getElementById('btn-start').disabled = !(setupReady.engine && setupReady.meta && setupReady.epub);
+  document.getElementById('btn-start').disabled = !(setupReady.engine && setupReady.epub);
 }
 
 function setStepDone(step, msg) {
@@ -575,46 +575,36 @@ function setStepError(step, msg) {
   document.getElementById('setup-error').textContent = msg;
 }
 
-// Load engine JS file
-document.getElementById('input-engine').addEventListener('change', async function() {
-  const file = this.files[0]; if (!file) return;
+// Auto-load engine + metadata from repo
+async function autoLoadEngineAndMeta() {
   try {
-    const text = await file.text();
-    const blob = new Blob([text], { type: 'text/javascript' });
-    const url  = URL.createObjectURL(blob);
+    document.getElementById('engine-status').textContent = 'Đang tải engine...';
+
+    // Load dict-engine.js
     await new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.onload = res; s.onerror = rej;
-      s.src = url;
+      s.src = './core/dict-engine.js';
+      s.onload = res;
+      s.onerror = () => rej(new Error('Không tải được core/dict-engine.js'));
       document.head.appendChild(s);
     });
-    URL.revokeObjectURL(url);
-    if (!window.DictEngine) throw new Error('File không chứa DictEngine');
-    await dbSet('engineLoaded', true);
-    setStepDone('engine', `✓ Loaded: ${file.name}`);
+    if (!window.DictEngine) throw new Error('DictEngine không tìm thấy sau khi load');
+
+    // Load metadata.json
+    document.getElementById('engine-status').textContent = 'Đang tải từ điển...';
+    const resp = await fetch('./data/metadata.json');
+    if (!resp.ok) throw new Error(`Không tải được data/metadata.json (${resp.status})`);
+    const json = await resp.json();
+    if (!json.data?.importedDicts) throw new Error('metadata.json không đúng định dạng');
+    await dbSet('metadata', json);
+
+    setStepDone('engine', `✓ Engine + ${json.data.importedDicts.length} từ điển`);
     setupReady.engine = true;
   } catch(e) {
-    setStepError('engine', '✗ Lỗi: ' + e.message);
+    setStepError('engine', '✗ ' + e.message);
   }
   checkSetupReady();
-});
-
-// Load metadata.json
-document.getElementById('input-meta').addEventListener('change', async function() {
-  const file = this.files[0]; if (!file) return;
-  try {
-    document.getElementById('meta-status').textContent = 'Đang load (có thể mất vài giây)...';
-    const text = await file.text();
-    const json = JSON.parse(text);
-    if (!json.data?.importedDicts) throw new Error('File không đúng định dạng metadata.json');
-    await dbSet('metadata', json);
-    setStepDone('meta', `✓ Loaded: ${json.data.importedDicts.length} dicts`);
-    setupReady.meta = true;
-  } catch(e) {
-    setStepError('meta', '✗ Lỗi: ' + e.message);
-  }
-  checkSetupReady();
-});
+}
 
 // Load EPUB
 document.getElementById('input-epub').addEventListener('change', async function() {
@@ -852,19 +842,8 @@ document.addEventListener('click', e => {
 (async () => {
   await loadSavedState();
   applyReaderSettings();
-
-  // Check if engine+meta were loaded previously (cached in IDB)
-  const engineLoaded = await dbGet('engineLoaded');
-  const metaLoaded   = await dbGet('metadata');
-
-  if (engineLoaded) {
-    document.getElementById('engine-status').textContent = '(Đã cache — load lại file nếu cần)';
-  }
-  if (metaLoaded) {
-    setStepDone('meta', `✓ Đã cache metadata (${metaLoaded.data?.importedDicts?.length || '?'} dicts)`);
-    setupReady.meta = true;
-    checkSetupReady();
-  }
+  // Auto-load engine + metadata from repo
+  await autoLoadEngineAndMeta();
 })();
 
 // ── Service Worker Registration ───────────────────────────────────────────────

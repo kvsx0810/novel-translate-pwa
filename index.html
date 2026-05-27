@@ -27,42 +27,22 @@
     </div>
 
     <div class="setup-steps">
-      <!-- Step 1: dict-engine.js -->
+      <!-- Step auto: engine + metadata -->
       <div class="step" id="step-engine">
         <div class="step-header">
-          <span class="step-num">1</span>
+          <span class="step-num">⚙</span>
           <div>
-            <div class="step-title">Engine dịch</div>
-            <div class="step-desc" id="engine-status">Chưa load — cần file <code>dict-engine.js</code> từ tool của bạn</div>
+            <div class="step-title">Engine & Từ điển</div>
+            <div class="step-desc" id="engine-status">Đang tải...</div>
           </div>
           <span class="step-badge" id="engine-badge">⏳</span>
         </div>
-        <label class="btn-upload" id="btn-load-engine">
-          Chọn dict-engine.js
-          <input type="file" id="input-engine" accept=".js" hidden>
-        </label>
       </div>
 
-      <!-- Step 2: metadata.json -->
-      <div class="step" id="step-meta">
-        <div class="step-header">
-          <span class="step-num">2</span>
-          <div>
-            <div class="step-title">Từ điển gốc</div>
-            <div class="step-desc" id="meta-status">Chưa load — cần file <code>metadata.json</code></div>
-          </div>
-          <span class="step-badge" id="meta-badge">⏳</span>
-        </div>
-        <label class="btn-upload" id="btn-load-meta">
-          Chọn metadata.json
-          <input type="file" id="input-meta" accept=".json" hidden>
-        </label>
-      </div>
-
-      <!-- Step 3: EPUB -->
+      <!-- Step 1: EPUB -->
       <div class="step" id="step-epub">
         <div class="step-header">
-          <span class="step-num">3</span>
+          <span class="step-num">1</span>
           <div>
             <div class="step-title">File truyện</div>
             <div class="step-desc" id="epub-status">Chưa chọn file EPUB</div>

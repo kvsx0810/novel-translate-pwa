@@ -6,6 +6,8 @@ const ASSETS = [
   './app.css',
   './app.js',
   './manifest.json',
+  './core/dict-engine.js',
+  './data/metadata.json',
 ];
 
 self.addEventListener('install', e => {
