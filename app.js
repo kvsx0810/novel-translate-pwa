@@ -260,15 +260,15 @@ function collectBlocks(root) {
 // CJK punctuation → Latin equivalents
 const PUNCT_MAP = {
   '。': '.', '，': ',', '、': ',', '；': ';', '：': ':',
-  '？': '?', '！': '!', '「': '"', '」': '"', '『': '"', '』': '"',
+  '？': '?', '！': '!', '「': '“', '」': '”', '『': '“', '』': '”',
   '【': '[', '】': ']', '《': '«', '》': '»', '〈': '<', '〉': '>',
   '—': '—', '…': '...', '　': ' ',
 };
 
 // Chars that cling to the LEFT (no space before them)
-const CLING_LEFT  = new Set(['.', ',', ';', ':', '?', '!', ')', ']', '"', '»', '...']);
+const CLING_LEFT  = new Set(['.', ',', ';', ':', '?', '!', ')', ']', '”', '»', '...']);
 // Chars that cling to the RIGHT (no space after them)
-const CLING_RIGHT = new Set(['(', '[', '"', '«']);
+const CLING_RIGHT = new Set(['(', '[', '“', '«']);
 
 function normPunct(str) {
   return str.replace(/[。，、；：？！「」『』【】《》〈〉—…　]/g, c => PUNCT_MAP[c] || c);
@@ -306,6 +306,18 @@ function translateAndInsert(text, container) {
   const firstWord = tokens.find(t => t.type === 'word' && t.text);
   if (firstWord) firstWord.text = firstWord.text.charAt(0).toUpperCase() + firstWord.text.slice(1);
 
+  // Capitalize first word after open-quote “
+  for (let _qi = 0; _qi < tokens.length; _qi++) {
+    if (tokens[_qi].type === 'punct' && tokens[_qi].text === '“') {
+      for (let _wi = _qi + 1; _wi < tokens.length; _wi++) {
+        if (tokens[_wi].type === 'word' && tokens[_wi].text) {
+          tokens[_wi].text = tokens[_wi].text.charAt(0).toUpperCase() + tokens[_wi].text.slice(1);
+          break;
+        }
+      }
+    }
+  }
+
   // Render with correct spacing
   const frag = document.createDocumentFragment();
   for (let i = 0; i < tokens.length; i++) {
@@ -314,10 +326,13 @@ function translateAndInsert(text, container) {
 
     // Decide space before this token
     if (prev) {
+      // Filler suppresses space only if it ends with a spacing/open-punct char
+      const fillerEndsWithSpacing = prev.type === 'filler' &&
+        /[\s“«([\[]$/.test(prev.text);
       const noSpaceBefore =
         (tok.type === 'punct' && CLING_LEFT.has(tok.text)) ||
         (prev.type === 'punct' && CLING_RIGHT.has(prev.text)) ||
-        prev.type === 'filler'; // filler already contains its own spacing chars
+        fillerEndsWithSpacing;
       if (!noSpaceBefore && tok.type !== 'filler') {
         frag.appendChild(document.createTextNode(' '));
       }
