@@ -323,9 +323,7 @@ function goToChapter(idx) {
 function getAllSpans() { return [...document.querySelectorAll('span.cv-word')]; }
 
 function removePopup() {
-  const el = document.getElementById('word-popup');
-  el.style.display = 'none';
-  popup = null;
+  if (popup) { popup.remove(); popup = null; }
   selectedSpans.forEach(s => s.classList.remove('selected'));
   selectedSpans = [];
 }
@@ -337,73 +335,95 @@ function getHanVietForSpans(spans) {
   }).join(' ');
 }
 
-function showPopup(x, y) {
-  // popup is a persistent DOM element, just reuse it
+let popupX = 0, popupY = 0;
+
+function renderPopup() {
+  if (popup) { popup.remove(); popup = null; }
+  selectedSpans.forEach(s => s.classList.add('selected'));
 
   const zw = selectedSpans.map(s => s.dataset.zw).join('');
   const vi = selectedSpans.map(s => s.textContent).join(' ');
   const hv = getHanVietForSpans(selectedSpans);
 
-  selectedSpans.forEach(s => s.classList.add('selected'));
-
-  const el = document.getElementById('word-popup');
-  document.getElementById('popup-hv').textContent = hv;
-  document.getElementById('popup-vi').textContent = vi;
-  document.getElementById('popup-input').value = hv;
-  document.getElementById('popup-status').textContent = '';
-  el.style.display = 'flex';
-
-  // Position
   const vw = window.innerWidth, vh = window.innerHeight;
   const pw = Math.min(340, vw * 0.9);
-  let left = x, top = y + 12;
-  if (left + pw > vw - 8) left = vw - pw - 8;
+  let left = Math.min(popupX, vw - pw - 8);
   if (left < 8) left = 8;
-  const ph = 180;
-  if (top + ph > vh - 8) top = y - ph - 8;
-  el.style.left = left + 'px';
-  el.style.top  = top + 'px';
+  let top = popupY + 12;
+  if (top + 200 > vh - 8) top = popupY - 200 - 8;
+
+  const el = document.createElement('div');
+  el.id = 'word-popup';
+  el.className = 'word-popup';
+  el.style.cssText = `display:flex;left:${left}px;top:${top}px;`;
+  el.innerHTML = `
+    <div class="popup-hv-row">
+      <span class="popup-label">HV</span>
+      <span id="popup-hv">${hv}</span>
+      <button id="popup-copy" class="popup-copy-btn">Copy</button>
+    </div>
+    <div class="popup-vi-row">
+      <span class="popup-label">Tr</span>
+      <span class="popup-vi-text">${vi}</span>
+    </div>
+    <div class="popup-expand-row">
+      <button id="popup-exp-left" class="popup-expand-btn">◀ Mở rộng</button>
+      <button id="popup-exp-right" class="popup-expand-btn">Mở rộng ▶</button>
+    </div>
+    <div class="popup-input-row">
+      <input id="popup-input" type="text" class="popup-input" placeholder="Nhập tên..." value="${hv}">
+      <button id="popup-add-profile" class="popup-btn-profile">+ Profile</button>
+      <button id="popup-add-global" class="popup-btn-global">+ Global</button>
+    </div>
+    <div id="popup-status" class="popup-status"></div>
+  `;
+
+  document.body.appendChild(el);
   popup = el;
 
-  document.getElementById('popup-copy').onclick = e => {
+  el.addEventListener('mousedown', e => e.stopPropagation());
+  el.addEventListener('click',     e => e.stopPropagation());
+
+  el.querySelector('#popup-copy').addEventListener('click', e => {
     e.stopPropagation();
     navigator.clipboard.writeText(zw).then(() => {
-      document.getElementById('popup-status').textContent = '✓ Đã copy: ' + zw;
+      el.querySelector('#popup-status').textContent = '✓ Đã copy: ' + zw;
     });
-  };
+  });
 
-  document.getElementById('popup-exp-left').onclick = e => {
+  el.querySelector('#popup-exp-left').addEventListener('click', e => {
     e.stopPropagation();
     const all = getAllSpans();
     const idx = all.indexOf(selectedSpans[0]);
-    if (idx > 0) { selectedSpans.unshift(all[idx - 1]); showPopup(x, y); }
-  };
-  document.getElementById('popup-exp-right').onclick = e => {
+    if (idx > 0) { selectedSpans.unshift(all[idx - 1]); renderPopup(); }
+  });
+
+  el.querySelector('#popup-exp-right').addEventListener('click', e => {
     e.stopPropagation();
     const all = getAllSpans();
     const idx = all.indexOf(selectedSpans[selectedSpans.length - 1]);
-    if (idx < all.length - 1) { selectedSpans.push(all[idx + 1]); showPopup(x, y); }
-  };
+    if (idx < all.length - 1) { selectedSpans.push(all[idx + 1]); renderPopup(); }
+  });
 
-  document.getElementById('popup-add-profile').onclick = async e => {
+  el.querySelector('#popup-add-profile').addEventListener('click', async e => {
     e.stopPropagation();
-    const viText = document.getElementById('popup-input').value.trim();
+    const viText = el.querySelector('#popup-input').value.trim();
     if (!viText) return;
     const zwText = selectedSpans.map(s => s.dataset.zw).join('');
     await addToProfile(zwText, viText);
-    document.getElementById('popup-status').textContent = `✓ Đã thêm "${zwText}=${viText}"`;
+    el.querySelector('#popup-status').textContent = `✓ Đã thêm "${zwText}=${viText}"`;
     setTimeout(removePopup, 1500);
-  };
+  });
 
-  document.getElementById('popup-add-global').onclick = async e => {
+  el.querySelector('#popup-add-global').addEventListener('click', async e => {
     e.stopPropagation();
-    const viText = document.getElementById('popup-input').value.trim();
+    const viText = el.querySelector('#popup-input').value.trim();
     if (!viText) return;
     const zwText = selectedSpans.map(s => s.dataset.zw).join('');
     await addToGlobal(zwText, viText);
-    document.getElementById('popup-status').textContent = `✓ Global: "${zwText}=${viText}"`;
+    el.querySelector('#popup-status').textContent = `✓ Global: "${zwText}=${viText}"`;
     setTimeout(removePopup, 1500);
-  };
+  });
 }
 
 // ── Name Management ───────────────────────────────────────────────────────────
@@ -886,25 +906,22 @@ function downloadText(text, filename) {
 }
 
 // ── Click handler for word spans ──────────────────────────────────────────────
-document.getElementById('reader-content').addEventListener('click', e => {
+document.addEventListener('mousedown', e => {
+  // If click inside popup — do nothing
   if (popup && popup.contains(e.target)) return;
-  if (e.target.closest('#word-popup')) return;
+  // If popup open but clicked outside — close it
+  if (popup) { removePopup(); return; }
 
   const span = e.target.closest('span.cv-word');
-  if (!span) { removePopup(); return; }
+  if (!span) return;
 
   e.preventDefault();
-  selectedSpans.forEach(s => s.classList.remove('selected'));
+  e.stopPropagation();
+  popupX = e.clientX;
+  popupY = e.clientY;
   selectedSpans = [span];
-  showPopup(e.clientX, e.clientY);
-});
-
-document.addEventListener('click', e => {
-  if (!popup) return;
-  if (e.target.closest('#word-popup')) return;
-  if (e.target.closest('span.cv-word')) return;
-  removePopup();
-});
+  renderPopup();
+}, { capture: true });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
