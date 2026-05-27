@@ -575,7 +575,9 @@ function setStepError(step, msg) {
   document.getElementById('setup-error').textContent = msg;
 }
 
-// Auto-load engine + metadata from repo
+// Auto-load engine + metadata (metadata parsed in Web Worker to avoid blocking UI)
+const METADATA_URL = 'https://pub-9771e4ccafeb496c99991ae2aa19d12e.r2.dev/metadata.json';
+
 async function autoLoadEngineAndMeta() {
   try {
     document.getElementById('engine-status').textContent = 'Đang tải engine...';
@@ -590,12 +592,36 @@ async function autoLoadEngineAndMeta() {
     });
     if (!window.DictEngine) throw new Error('DictEngine không tìm thấy sau khi load');
 
-    // Load metadata.json
-    document.getElementById('engine-status').textContent = 'Đang tải từ điển...';
-    const resp = await fetch('./data/metadata.json');
-    if (!resp.ok) throw new Error(`Không tải được data/metadata.json (${resp.status})`);
-    const json = await resp.json();
-    if (!json.data?.importedDicts) throw new Error('metadata.json không đúng định dạng');
+    // Check IDB cache first
+    const cached = await dbGet('metadata');
+    if (cached?.data?.importedDicts) {
+      setStepDone('engine', `✓ Engine + ${cached.data.importedDicts.length} từ điển (cache)`);
+      setupReady.engine = true;
+      checkSetupReady();
+      return;
+    }
+
+    // Fetch + parse in Web Worker
+    document.getElementById('engine-status').textContent = 'Đang tải từ điển (lần đầu ~65MB)...';
+    const json = await new Promise((res, rej) => {
+      const worker = new Worker('./metadata-worker.js');
+      worker.postMessage({ url: METADATA_URL });
+      worker.onmessage = e => {
+        const { type, text, data, message } = e.data;
+        if (type === 'progress') {
+          document.getElementById('engine-status').textContent = text;
+        } else if (type === 'done') {
+          worker.terminate();
+          res(data);
+        } else if (type === 'error') {
+          worker.terminate();
+          rej(new Error(message));
+        }
+      };
+      worker.onerror = e => { worker.terminate(); rej(new Error(e.message)); };
+    });
+
+    document.getElementById('engine-status').textContent = 'Đang lưu cache...';
     await dbSet('metadata', json);
 
     setStepDone('engine', `✓ Engine + ${json.data.importedDicts.length} từ điển`);
