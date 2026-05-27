@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f0f14">
+  <title>Đọc Truyện CV</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="theme-dark">
+
+<!-- ── SPLASH / SETUP SCREEN ─────────────────────────────────────────────── -->
+<div id="screen-setup" class="screen active">
+  <div class="setup-bg"></div>
+  <div class="setup-inner">
+    <div class="logo">
+      <span class="logo-zh">讀</span>
+      <div class="logo-text">
+        <h1>Đọc Truyện CV</h1>
+        <p>Dịch Trung → Việt ngay trên máy</p>
+      </div>
+    </div>
+
+    <div class="setup-steps">
+      <!-- Step 1: dict-engine.js -->
+      <div class="step" id="step-engine">
+        <div class="step-header">
+          <span class="step-num">1</span>
+          <div>
+            <div class="step-title">Engine dịch</div>
+            <div class="step-desc" id="engine-status">Chưa load — cần file <code>dict-engine.js</code> từ tool của bạn</div>
+          </div>
+          <span class="step-badge" id="engine-badge">⏳</span>
+        </div>
+        <label class="btn-upload" id="btn-load-engine">
+          Chọn dict-engine.js
+          <input type="file" id="input-engine" accept=".js" hidden>
+        </label>
+      </div>
+
+      <!-- Step 2: metadata.json -->
+      <div class="step" id="step-meta">
+        <div class="step-header">
+          <span class="step-num">2</span>
+          <div>
+            <div class="step-title">Từ điển gốc</div>
+            <div class="step-desc" id="meta-status">Chưa load — cần file <code>metadata.json</code></div>
+          </div>
+          <span class="step-badge" id="meta-badge">⏳</span>
+        </div>
+        <label class="btn-upload" id="btn-load-meta">
+          Chọn metadata.json
+          <input type="file" id="input-meta" accept=".json" hidden>
+        </label>
+      </div>
+
+      <!-- Step 3: EPUB -->
+      <div class="step" id="step-epub">
+        <div class="step-header">
+          <span class="step-num">3</span>
+          <div>
+            <div class="step-title">File truyện</div>
+            <div class="step-desc" id="epub-status">Chưa chọn file EPUB</div>
+          </div>
+          <span class="step-badge" id="epub-badge">⏳</span>
+        </div>
+        <label class="btn-upload" id="btn-load-epub">
+          Chọn file EPUB
+          <input type="file" id="input-epub" accept=".epub" hidden>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn-start" id="btn-start" disabled>Bắt đầu đọc →</button>
+    <div id="setup-error" class="setup-error"></div>
+  </div>
+</div>
+
+<!-- ── READER SCREEN ──────────────────────────────────────────────────────── -->
+<div id="screen-reader" class="screen">
+
+  <!-- Header -->
+  <header class="reader-header" id="reader-header">
+    <button class="hdr-btn" id="btn-back-setup" title="Quay lại">←</button>
+    <div class="hdr-title" id="hdr-book-title">Đang tải...</div>
+    <div class="hdr-actions">
+      <button class="hdr-btn" id="btn-toc" title="Mục lục">☰</button>
+      <button class="hdr-btn" id="btn-settings" title="Cài đặt">⚙</button>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <main class="reader-content" id="reader-content">
+    <div class="chapter-title" id="chapter-title"></div>
+    <div class="chapter-body" id="chapter-body"></div>
+    <div class="chapter-nav">
+      <button class="nav-btn" id="btn-prev-chap">← Chương trước</button>
+      <span class="nav-info" id="nav-info"></span>
+      <button class="nav-btn" id="btn-next-chap">Chương sau →</button>
+    </div>
+  </main>
+
+  <!-- TOC Drawer -->
+  <div class="drawer-overlay" id="toc-overlay"></div>
+  <aside class="drawer" id="toc-drawer">
+    <div class="drawer-header">
+      <h3>Mục lục</h3>
+      <button class="drawer-close" id="toc-close">✕</button>
+    </div>
+    <div class="toc-search-wrap">
+      <input type="text" id="toc-search" placeholder="Tìm chương..." class="toc-search">
+    </div>
+    <ul class="toc-list" id="toc-list"></ul>
+  </aside>
+
+  <!-- Settings Drawer -->
+  <div class="drawer-overlay" id="settings-overlay"></div>
+  <aside class="drawer drawer-right" id="settings-drawer">
+    <div class="drawer-header">
+      <h3>Cài đặt</h3>
+      <button class="drawer-close" id="settings-close">✕</button>
+    </div>
+    <div class="settings-body">
+
+      <div class="setting-group">
+        <label class="setting-label">Giao diện</label>
+        <div class="theme-btns">
+          <button class="theme-btn active" data-theme="dark">🌙 Tối</button>
+          <button class="theme-btn" data-theme="sepia">📜 Nâu</button>
+          <button class="theme-btn" data-theme="light">☀️ Sáng</button>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Cỡ chữ: <span id="font-size-val">18</span>px</label>
+        <input type="range" id="font-size" min="14" max="28" value="18" class="slider">
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Chiều rộng: <span id="line-width-val">680</span>px</label>
+        <input type="range" id="line-width" min="320" max="900" value="680" step="20" class="slider">
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Khoảng cách dòng: <span id="line-height-val">1.9</span></label>
+        <input type="range" id="line-height" min="1.4" max="2.6" value="1.9" step="0.1" class="slider">
+      </div>
+
+      <div class="setting-sep"></div>
+
+      <!-- Profile manager -->
+      <div class="setting-group">
+        <label class="setting-label">Profile tên nhân vật</label>
+        <select id="profile-select" class="setting-select">
+          <option value="">— Không dùng profile —</option>
+        </select>
+        <div class="profile-actions">
+          <button class="btn-sm" id="btn-new-profile">+ Tạo mới</button>
+          <button class="btn-sm btn-danger" id="btn-del-profile">Xóa</button>
+        </div>
+        <div id="new-profile-form" class="new-profile-form" style="display:none">
+          <input type="text" id="new-profile-name" placeholder="Tên profile..." class="setting-input">
+          <button class="btn-sm btn-primary" id="btn-create-profile">Tạo</button>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Danh sách name trong profile</label>
+        <div id="phrase-list" class="phrase-list"></div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Thêm name thủ công</label>
+        <div class="manual-add">
+          <input type="text" id="manual-zw" placeholder="Chữ Trung (梵海孽)" class="setting-input">
+          <input type="text" id="manual-vi" placeholder="Tiếng Việt" class="setting-input">
+          <div class="manual-btns">
+            <button class="btn-sm btn-primary" id="manual-add-profile">+ Profile</button>
+            <button class="btn-sm btn-green" id="manual-add-global">+ Global</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Import / Export</label>
+        <div class="ie-btns">
+          <button class="btn-sm" id="btn-export-profile">Export Profile</button>
+          <label class="btn-sm" id="btn-import-profile">Import Profile<input type="file" id="input-import-profile" accept=".txt" hidden></label>
+          <button class="btn-sm" id="btn-export-global">Export Global</button>
+          <label class="btn-sm" id="btn-import-global">Import Global<input type="file" id="input-import-global" accept=".txt" hidden></label>
+        </div>
+      </div>
+
+      <div class="setting-sep"></div>
+      <div class="setting-group">
+        <label class="setting-label">Global phrases</label>
+        <div id="global-phrase-list" class="phrase-list"></div>
+        <button class="btn-sm btn-danger" id="btn-clear-global" style="margin-top:8px">Xóa toàn bộ Global</button>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- Word popup -->
+  <div id="word-popup" class="word-popup" style="display:none">
+    <div class="popup-hv-row">
+      <span class="popup-label">HV</span>
+      <span id="popup-hv"></span>
+      <button id="popup-copy" class="popup-copy-btn">Copy</button>
+    </div>
+    <div class="popup-vi-row">
+      <span class="popup-label">Tr</span>
+      <span id="popup-vi" class="popup-vi-text"></span>
+    </div>
+    <div class="popup-expand-row">
+      <button id="popup-exp-left" class="popup-expand-btn">◀ Mở rộng</button>
+      <button id="popup-exp-right" class="popup-expand-btn">Mở rộng ▶</button>
+    </div>
+    <div class="popup-input-row">
+      <input id="popup-input" type="text" class="popup-input" placeholder="Nhập tên...">
+      <button id="popup-add-profile" class="popup-btn-profile">+ Profile</button>
+      <button id="popup-add-global" class="popup-btn-global">+ Global</button>
+    </div>
+    <div id="popup-status" class="popup-status"></div>
+  </div>
+
+</div><!-- /screen-reader -->
+
+<!-- Scripts -->
+<script src="app.js"></script>
+</body>
+</html>
