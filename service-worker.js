@@ -1,17 +1,18 @@
 // service-worker.js
-const CACHE = 'novel-reader-cv-v3';
+const CACHE = 'novel-reader-cv-v4';
 
 const CACHE_FIRST_PATTERNS = [
   '/novel-translate-pwa/core/',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'cdnjs.cloudflare.com',
+  // metadata.json từ R2 — cache-first, ~65MB, stable
+  'r2.dev',
 ];
 
-// Never cache — LFS pointer or external data handled by app/IDB
+// Never cache
 const NEVER_CACHE = [
   '/novel-translate-pwa/data/',
-  'r2.dev',
 ];
 
 self.addEventListener('install', e => {

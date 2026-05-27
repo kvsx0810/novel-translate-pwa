@@ -6,6 +6,7 @@ const state = {
   engine: null,
   engineReady: false,
   metadataLoaded: false,
+  metadataJson: null,  // Lưu tạm trong RAM, không cần IDB
   epub: null,
   chapters: [],       // [{id, title, content(raw html/text)}]
   currentChap: 0,
@@ -141,8 +142,8 @@ async function initEngine() {
   if (!engine) throw new Error('DictEngine không tìm thấy');
   state.engine = engine;
 
-  // Load metadata from IDB
-  const metadata = await dbGet('metadata');
+  // Lấy metadata từ state (đã được load bởi autoLoadEngineAndMeta)
+  const metadata = state.metadataJson;
   if (!metadata) throw new Error('metadata.json chưa được load');
 
   // Build phienAmMap
@@ -563,6 +564,11 @@ async function loadSavedState() {
   state.lineWidth     = lsGet('lineWidth', 680);
   state.lineHeight    = lsGet('lineHeight', 1.9);
   state.theme         = lsGet('theme', 'dark');
+  // Xóa metadata cũ từ IDB (đã chuyển sang Cache API qua SW)
+  try {
+    const db = await dbOpen();
+    db.transaction('kv','readwrite').objectStore('kv').delete('metadata');
+  } catch(e) { /* ignore */ }
 }
 
 // ── UI: Settings panel ────────────────────────────────────────────────────────
@@ -737,17 +743,11 @@ async function autoLoadEngineAndMeta() {
     });
     if (!window.DictEngine) throw new Error('DictEngine không tìm thấy sau khi load');
 
-    // Check IDB cache first
-    const cached = await dbGet('metadata');
-    if (cached?.data?.importedDicts) {
-      setStepDone('engine', `✓ Engine + ${cached.data.importedDicts.length} từ điển (cache)`);
-      setupReady.engine = true;
-      checkSetupReady();
-      return;
-    }
-
-    // Fetch + parse in Web Worker
-    document.getElementById('engine-status').textContent = 'Đang tải từ điển (lần đầu ~65MB)...';
+    // Fetch + parse in Web Worker (Service Worker cache R2 response ở disk, không lưu IDB)
+    const isCached = await caches.match(METADATA_URL).then(r => !!r).catch(() => false);
+    document.getElementById('engine-status').textContent = isCached
+      ? 'Đang tải từ điển (cache)...'
+      : 'Đang tải từ điển (lần đầu ~65MB)...';
     const json = await new Promise((res, rej) => {
       const worker = new Worker('./metadata-worker.js');
       worker.postMessage({ url: METADATA_URL });
@@ -766,10 +766,8 @@ async function autoLoadEngineAndMeta() {
       worker.onerror = e => { worker.terminate(); rej(new Error(e.message)); };
     });
 
-    document.getElementById('engine-status').textContent = 'Đang lưu cache...';
-    await dbSet('metadata', json);
-
-    setStepDone('engine', `✓ Engine + ${json.data.importedDicts.length} từ điển`);
+    setStepDone('engine', `✓ Engine + ${json.data.importedDicts.length} từ điển${isCached ? ' (cache)' : ''}`);
+    state.metadataJson = json;
     setupReady.engine = true;
   } catch(e) {
     setStepError('engine', '✗ ' + e.message);
