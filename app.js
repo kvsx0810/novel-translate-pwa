@@ -257,16 +257,29 @@ function collectBlocks(root) {
   });
 }
 
+// CJK punctuation → Latin equivalents
+const PUNCT_MAP = {
+  '。': '.', '，': ',', '、': ',', '；': ';', '：': ':',
+  '？': '?', '！': '!', '「': '"', '」': '"', '『': '\'', '』': '\'',
+  '【': '[', '】': ']', '《': '«', '》': '»', '〈': '<', '〉': '>',
+  '—': '—', '…': '…', '　': ' ',
+};
+
+function normPunct(str) {
+  return str.replace(/[。，、；：？！「」『』【】《》〈〉—…　]/g, c => PUNCT_MAP[c] || c);
+}
+
 function translateAndInsert(text, container) {
   const engine = state.engine;
   const items = engine.segmentDisplay(text);
-  if (!items || !items.length) { container.textContent = text; return; }
+  if (!items || !items.length) { container.textContent = normPunct(text); return; }
 
   const frag = document.createDocumentFragment();
+  let firstWord = true; // capitalize first word of paragraph
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     if (item.type === 'filler') {
-      frag.appendChild(document.createTextNode(item.text));
+      frag.appendChild(document.createTextNode(normPunct(item.text)));
     } else {
       if (i > 0 && items[i-1].type !== 'filler') {
         frag.appendChild(document.createTextNode(' '));
@@ -276,7 +289,15 @@ function translateAndInsert(text, container) {
       span.dataset.zw = item.zh;
       span.dataset.hv = item.hv;
       span.dataset.vi = item.vi || item.hv;
-      span.textContent = PARTICLES.has(item.zh) ? '' : (item.vi || item.hv);
+      let display = PARTICLES.has(item.zh) ? '' : (item.vi || item.hv);
+      // Capitalize first visible word
+      if (display && firstWord) {
+        display = display.charAt(0).toUpperCase() + display.slice(1);
+        firstWord = false;
+      } else if (display) {
+        firstWord = false;
+      }
+      span.textContent = display;
       frag.appendChild(span);
     }
   }
@@ -330,8 +351,12 @@ function removePopup() {
 
 function getHanVietForSpans(spans) {
   return spans.map(s => {
-    const hv = s.dataset.hv || '';
-    return hv.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const zw = s.dataset.zw || '';
+    // Build Han Viet from phienAmMap char by char (like extension)
+    return [...zw].map(ch => {
+      const hv = state.phienAmMap.get(ch) || s.dataset.hv || ch;
+      return hv.charAt(0).toUpperCase() + hv.slice(1);
+    }).join(' ');
   }).join(' ');
 }
 
@@ -694,12 +719,15 @@ async function autoLoadEngineAndMeta() {
   checkSetupReady();
 }
 
-// Load EPUB
+// Load EPUB + save to IDB for restore on reload
 document.getElementById('input-epub').addEventListener('change', async function() {
   const file = this.files[0]; if (!file) return;
   try {
     document.getElementById('epub-status').textContent = 'Đang phân tích EPUB...';
     const result = await parseEpub(file);
+    // Save file bytes to IDB so we can restore without re-upload
+    const buf = await file.arrayBuffer();
+    await dbSet('epub-file', { name: file.name, data: buf });
     state.epub = result;
     state.chapters = result.chapters;
     setStepDone('epub', `✓ ${result.title} — ${result.chapters.length} chương`);
@@ -929,7 +957,26 @@ document.addEventListener('mousedown', e => {
   applyReaderSettings();
   // Auto-load engine + metadata from repo
   await autoLoadEngineAndMeta();
+  // Restore cached EPUB if available
+  await tryRestoreEpub();
 })();
+
+async function tryRestoreEpub() {
+  try {
+    const cached = await dbGet('epub-file');
+    if (!cached) return;
+    document.getElementById('epub-status').textContent = 'Đang khôi phục sách đã đọc...';
+    const file = new File([cached.data], cached.name, { type: 'application/epub+zip' });
+    const result = await parseEpub(file);
+    state.epub = result;
+    state.chapters = result.chapters;
+    setStepDone('epub', `✓ ${result.title} — ${result.chapters.length} chương (đã lưu)`);
+    setupReady.epub = true;
+    checkSetupReady();
+  } catch(e) {
+    console.warn('Không thể khôi phục EPUB:', e);
+  }
+}
 
 // ── Service Worker Registration ───────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
