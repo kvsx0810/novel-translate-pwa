@@ -207,13 +207,21 @@ function renderChapterContent(bodyHTML) {
 
 function extractParagraphs(el) {
   const result = [];
+  const BLOCK_TAGS = new Set(['p','div','h1','h2','h3','h4','h5','h6','li','tr','td','th','blockquote','section','article']);
+
   function walk(node) {
     if (node.nodeType === 3) {
       const t = node.textContent.trim();
       if (t) result.push(t);
     } else if (node.nodeType === 1) {
       const tag = node.tagName.toLowerCase();
-      if (['p','div','br','h1','h2','h3','h4','li','tr'].includes(tag)) {
+      if (tag === 'br') {
+        // br acts as paragraph separator — push empty string as sentinel
+        if (result.length && result[result.length - 1] !== '') result.push('');
+        return;
+      }
+      if (BLOCK_TAGS.has(tag)) {
+        // Collect all text inside this block as one paragraph
         const inner = node.textContent.trim();
         if (inner) result.push(inner);
       } else {
@@ -221,9 +229,10 @@ function extractParagraphs(el) {
       }
     }
   }
+
   for (const c of el.childNodes) walk(c);
-  // Deduplicate consecutive identical
-  return result.filter((v,i,a) => i === 0 || v !== a[i-1]);
+  // Remove empty sentinels and deduplicate consecutive identical
+  return result.filter(Boolean).filter((v,i,a) => i === 0 || v !== a[i-1]);
 }
 
 function translateAndInsert(text, container) {
@@ -259,8 +268,17 @@ function goToChapter(idx) {
   lsSet('lastChap_' + (state.epub?.title || ''), idx);
 
   const chap = state.chapters[idx];
-  document.getElementById('chapter-title').textContent = chap.title;
-  document.getElementById('hdr-book-title').textContent = chap.title;
+
+  // Translate chapter title if CJK
+  let displayTitle = chap.title;
+  if (state.engineReady && CJK_RE.test(chap.title)) {
+    const titleP = document.createElement('span');
+    translateAndInsert(chap.title, titleP);
+    displayTitle = titleP.textContent;
+  }
+
+  document.getElementById('chapter-title').textContent = displayTitle;
+  document.getElementById('hdr-book-title').textContent = displayTitle;
   document.getElementById('nav-info').textContent = `${idx + 1} / ${state.chapters.length}`;
   document.getElementById('btn-prev-chap').disabled = idx === 0;
   document.getElementById('btn-next-chap').disabled = idx === state.chapters.length - 1;
@@ -283,7 +301,9 @@ function goToChapter(idx) {
 function getAllSpans() { return [...document.querySelectorAll('span.cv-word')]; }
 
 function removePopup() {
-  if (popup) { popup.remove(); popup = null; }
+  const el = document.getElementById('word-popup');
+  el.style.display = 'none';
+  popup = null;
   selectedSpans.forEach(s => s.classList.remove('selected'));
   selectedSpans = [];
 }
