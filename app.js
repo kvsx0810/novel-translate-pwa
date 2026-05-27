@@ -260,10 +260,15 @@ function collectBlocks(root) {
 // CJK punctuation → Latin equivalents
 const PUNCT_MAP = {
   '。': '.', '，': ',', '、': ',', '；': ';', '：': ':',
-  '？': '?', '！': '!', '「': '"', '」': '"', '『': '\'', '』': '\'',
+  '？': '?', '！': '!', '「': '"', '」': '"', '『': '"', '』': '"',
   '【': '[', '】': ']', '《': '«', '》': '»', '〈': '<', '〉': '>',
-  '—': '—', '…': '…', '　': ' ',
+  '—': '—', '…': '...', '　': ' ',
 };
+
+// Chars that cling to the LEFT (no space before them)
+const CLING_LEFT  = new Set(['.', ',', ';', ':', '?', '!', ')', ']', '"', '»', '...']);
+// Chars that cling to the RIGHT (no space after them)
+const CLING_RIGHT = new Set(['(', '[', '"', '«']);
 
 function normPunct(str) {
   return str.replace(/[。，、；：？！「」『』【】《》〈〉—…　]/g, c => PUNCT_MAP[c] || c);
@@ -274,34 +279,65 @@ function translateAndInsert(text, container) {
   const items = engine.segmentDisplay(text);
   if (!items || !items.length) { container.textContent = normPunct(text); return; }
 
-  const frag = document.createDocumentFragment();
-  let firstWord = true; // capitalize first word of paragraph
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  // Build flat token list
+  const tokens = []; // {type: 'word'|'punct'|'filler', text, zw?, hv?, vi?}
+  for (const item of items) {
     if (item.type === 'filler') {
-      frag.appendChild(document.createTextNode(normPunct(item.text)));
+      const norm = normPunct(item.text);
+      for (const ch of norm) {
+        if (CLING_LEFT.has(ch) || CLING_RIGHT.has(ch)) {
+          tokens.push({ type: 'punct', text: ch });
+        } else {
+          // Merge into previous filler or create new
+          if (tokens.length && tokens[tokens.length-1].type === 'filler') {
+            tokens[tokens.length-1].text += ch;
+          } else {
+            tokens.push({ type: 'filler', text: ch });
+          }
+        }
+      }
     } else {
-      if (i > 0 && items[i-1].type !== 'filler') {
+      const display = PARTICLES.has(item.zh) ? '' : (item.vi || item.hv);
+      tokens.push({ type: 'word', text: display, zw: item.zh, hv: item.hv, vi: item.vi || item.hv });
+    }
+  }
+
+  // Capitalize first visible word
+  const firstWord = tokens.find(t => t.type === 'word' && t.text);
+  if (firstWord) firstWord.text = firstWord.text.charAt(0).toUpperCase() + firstWord.text.slice(1);
+
+  // Render with correct spacing
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    const prev = tokens[i - 1];
+
+    // Decide space before this token
+    if (prev) {
+      const noSpaceBefore =
+        (tok.type === 'punct' && CLING_LEFT.has(tok.text)) ||
+        (prev.type === 'punct' && CLING_RIGHT.has(prev.text)) ||
+        prev.type === 'filler'; // filler already contains its own spacing chars
+      if (!noSpaceBefore && tok.type !== 'filler') {
         frag.appendChild(document.createTextNode(' '));
       }
+    }
+
+    if (tok.type === 'word') {
       const span = document.createElement('span');
       span.className = 'cv-word';
-      span.dataset.zw = item.zh;
-      span.dataset.hv = item.hv;
-      span.dataset.vi = item.vi || item.hv;
-      let display = PARTICLES.has(item.zh) ? '' : (item.vi || item.hv);
-      // Capitalize first visible word
-      if (display && firstWord) {
-        display = display.charAt(0).toUpperCase() + display.slice(1);
-        firstWord = false;
-      } else if (display) {
-        firstWord = false;
-      }
-      span.textContent = display;
+      span.dataset.zw = tok.zw;
+      span.dataset.hv = tok.hv;
+      span.dataset.vi = tok.vi;
+      span.textContent = tok.text;
       frag.appendChild(span);
+    } else {
+      frag.appendChild(document.createTextNode(tok.text));
     }
   }
   container.appendChild(frag);
+}
+
 }
 
 // ── Chapter Navigation ────────────────────────────────────────────────────────
