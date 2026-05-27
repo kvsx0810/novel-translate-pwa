@@ -1,17 +1,6 @@
 // service-worker.js
-const CACHE = 'novel-reader-cv-v2';
+const CACHE = 'novel-reader-cv-v3';
 
-// These files change often — always network-first
-const NETWORK_FIRST = [
-  '/novel-translate-pwa/',
-  '/novel-translate-pwa/index.html',
-  '/novel-translate-pwa/app.js',
-  '/novel-translate-pwa/app.css',
-  '/novel-translate-pwa/metadata-worker.js',
-  '/novel-translate-pwa/service-worker.js',
-];
-
-// These are large/stable — cache-first (engine, fonts)
 const CACHE_FIRST_PATTERNS = [
   '/novel-translate-pwa/core/',
   'fonts.googleapis.com',
@@ -19,13 +8,17 @@ const CACHE_FIRST_PATTERNS = [
   'cdnjs.cloudflare.com',
 ];
 
+// Never cache — LFS pointer or external data handled by app/IDB
+const NEVER_CACHE = [
+  '/novel-translate-pwa/data/',
+  'r2.dev',
+];
+
 self.addEventListener('install', e => {
-  // Immediately take over without waiting
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  // Delete old caches
   e.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
@@ -35,11 +28,15 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  const path = url.pathname;
+
+  // Never cache these
+  if (NEVER_CACHE.some(p => url.href.includes(p))) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
 
   // Cache-first for stable large files
-  const isCacheFirst = CACHE_FIRST_PATTERNS.some(p => url.href.includes(p));
-  if (isCacheFirst) {
+  if (CACHE_FIRST_PATTERNS.some(p => url.href.includes(p))) {
     e.respondWith(
       caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
         const clone = resp.clone();
@@ -50,7 +47,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Network-first for app files — always get latest, fallback to cache offline
+  // Network-first for all app files
   e.respondWith(
     fetch(e.request).then(resp => {
       const clone = resp.clone();
