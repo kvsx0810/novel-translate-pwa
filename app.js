@@ -338,7 +338,6 @@ function translateAndInsert(text, container) {
   container.appendChild(frag);
 }
 
-}
 
 // ── Chapter Navigation ────────────────────────────────────────────────────────
 function goToChapter(idx) {
