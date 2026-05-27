@@ -333,7 +333,8 @@ function translateAndInsert(text, container) {
         (tok.type === 'punct' && CLING_LEFT.has(tok.text)) ||
         (prev.type === 'punct' && CLING_RIGHT.has(prev.text)) ||
         fillerEndsWithSpacing;
-      if (!noSpaceBefore && tok.type !== 'filler') {
+      const fillerNeedsSpaceBefore = tok.type === 'filler' && /^[^\s\u201d\u00bb)\]]/.test(tok.text);
+      if (!noSpaceBefore && (tok.type !== 'filler' || fillerNeedsSpaceBefore)) {
         frag.appendChild(document.createTextNode(' '));
       }
     }
