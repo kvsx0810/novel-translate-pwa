@@ -185,54 +185,76 @@ function renderChapterContent(bodyHTML) {
   const container = document.getElementById('chapter-body');
   container.innerHTML = '';
 
-  // Parse the HTML and walk text nodes
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<div>${bodyHTML}</div>`, 'text/html');
   const sourceDiv = doc.body.firstChild;
 
-  // Convert sourceDiv children to paragraphs for reader
-  const paragraphs = extractParagraphs(sourceDiv);
+  // Walk DOM, collect leaf text blocks preserving original line breaks
+  const blocks = collectBlocks(sourceDiv);
 
-  for (const para of paragraphs) {
-    if (!para.trim()) continue;
+  for (const block of blocks) {
+    const text = block.trim();
+    if (!text) continue;
     const p = document.createElement('p');
-    if (CJK_RE.test(para)) {
-      translateAndInsert(para, p);
+    if (CJK_RE.test(text)) {
+      translateAndInsert(text, p);
     } else {
-      p.textContent = para;
+      p.textContent = text;
     }
     container.appendChild(p);
   }
 }
 
-function extractParagraphs(el) {
+// Collect text blocks by walking DOM, treating each block-level element as one paragraph.
+// If a block contains only inline content (no child blocks), its full text = one paragraph.
+// This preserves the original p-by-p layout from the EPUB.
+function collectBlocks(root) {
+  const BLOCK_TAGS = new Set(['p','div','h1','h2','h3','h4','h5','h6','li','td','th','blockquote','section','article']);
+  const SKIP_TAGS  = new Set(['script','style','nav','head']);
   const result = [];
-  const BLOCK_TAGS = new Set(['p','div','h1','h2','h3','h4','h5','h6','li','tr','td','th','blockquote','section','article']);
+
+  function isBlock(node) {
+    return node.nodeType === 1 && BLOCK_TAGS.has(node.tagName.toLowerCase());
+  }
+  function hasBlockChild(node) {
+    return [...node.childNodes].some(c => isBlock(c));
+  }
 
   function walk(node) {
     if (node.nodeType === 3) {
+      // Bare text node at root level
       const t = node.textContent.trim();
       if (t) result.push(t);
-    } else if (node.nodeType === 1) {
-      const tag = node.tagName.toLowerCase();
-      if (tag === 'br') {
-        // br acts as paragraph separator — push empty string as sentinel
-        if (result.length && result[result.length - 1] !== '') result.push('');
-        return;
-      }
-      if (BLOCK_TAGS.has(tag)) {
-        // Collect all text inside this block as one paragraph
-        const inner = node.textContent.trim();
-        if (inner) result.push(inner);
-      } else {
+      return;
+    }
+    if (node.nodeType !== 1) return;
+
+    const tag = node.tagName.toLowerCase();
+    if (SKIP_TAGS.has(tag)) return;
+    if (tag === 'br') { result.push(''); return; }
+
+    if (isBlock(node)) {
+      if (hasBlockChild(node)) {
+        // Container block — recurse into children
         for (const c of node.childNodes) walk(c);
+      } else {
+        // Leaf block — treat entire text as one paragraph
+        const t = node.textContent.trim();
+        if (t) result.push(t);
       }
+    } else {
+      // Inline element — recurse
+      for (const c of node.childNodes) walk(c);
     }
   }
 
-  for (const c of el.childNodes) walk(c);
-  // Remove empty sentinels and deduplicate consecutive identical
-  return result.filter(Boolean).filter((v,i,a) => i === 0 || v !== a[i-1]);
+  for (const c of root.childNodes) walk(c);
+
+  // Remove duplicate consecutive empty strings (multiple <br>) → keep max 1
+  return result.filter((v, i, a) => {
+    if (v !== '') return true;
+    return a[i - 1] !== '';
+  });
 }
 
 function translateAndInsert(text, container) {
@@ -316,7 +338,7 @@ function getHanVietForSpans(spans) {
 }
 
 function showPopup(x, y) {
-  if (popup) popup.remove();
+  // popup is a persistent DOM element, just reuse it
 
   const zw = selectedSpans.map(s => s.dataset.zw).join('');
   const vi = selectedSpans.map(s => s.textContent).join(' ');
