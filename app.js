@@ -280,19 +280,25 @@ function translateAndInsert(text, container) {
   if (!items || !items.length) { container.textContent = normPunct(text); return; }
 
   // Build flat token list
-  const tokens = []; // {type: 'word'|'punct'|'filler', text, zw?, hv?, vi?}
+  const tokens = []; // {type: 'word'|'punct'|'num'|'filler', text, zw?, hv?, vi?}
   for (const item of items) {
     if (item.type === 'filler') {
       const norm = normPunct(item.text);
-      for (const ch of norm) {
-        if (CLING_LEFT.has(ch) || CLING_RIGHT.has(ch)) {
-          tokens.push({ type: 'punct', text: ch });
+      // Split filler into: punct | num-runs (digits + ASCII letters/symbols that need spacing) | filler
+      // Using regex to chunk: runs of digits/ASCII-alnum vs whitespace vs punct vs rest
+      const chunks = norm.match(/\d[\d.,]*|[A-Za-z]+|[^\S\n]+|./gsu) || [];
+      for (const chunk of chunks) {
+        if (CLING_LEFT.has(chunk) || CLING_RIGHT.has(chunk)) {
+          tokens.push({ type: 'punct', text: chunk });
+        } else if (/^\d[\d.,]*$/.test(chunk) || /^[A-Za-z]+$/.test(chunk)) {
+          // Numbers and Latin words need space on both sides — treat like a word token
+          tokens.push({ type: 'num', text: chunk });
         } else {
-          // Merge into previous filler or create new
+          // Whitespace or other chars — merge into previous filler or create new
           if (tokens.length && tokens[tokens.length-1].type === 'filler') {
-            tokens[tokens.length-1].text += ch;
+            tokens[tokens.length-1].text += chunk;
           } else {
-            tokens.push({ type: 'filler', text: ch });
+            tokens.push({ type: 'filler', text: chunk });
           }
         }
       }
@@ -334,7 +340,8 @@ function translateAndInsert(text, container) {
         (prev.type === 'punct' && CLING_RIGHT.has(prev.text)) ||
         fillerEndsWithSpacing;
       const fillerNeedsSpaceBefore = tok.type === 'filler' && /^[^\s\u201d\u00bb)\]]/.test(tok.text);
-      if (!noSpaceBefore && (tok.type !== 'filler' || fillerNeedsSpaceBefore)) {
+      // 'num' always needs space before (same as 'word')
+      if (!noSpaceBefore && (tok.type === 'word' || tok.type === 'num' || fillerNeedsSpaceBefore)) {
         frag.appendChild(document.createTextNode(' '));
       }
     }
