@@ -309,7 +309,7 @@ async function parseEpub(file) {
 // Tìm cover image trong EPUB, resize xuống ~200px width, trả về data URL (hoặc null)
 async function extractCover(zip, opfDir, opfXml, manifestItems) {
   try {
-    // Cách 1: <meta name="cover" content="id"/>
+    // Cách 1: <meta name="cover" content="id-hoặc-tên-file"/>
     let coverId = opfXml.match(/<meta\s+name="cover"\s+content="([^"]+)"/i)?.[1];
     // Cách 2: <item properties="cover-image"/>
     if (!coverId) {
@@ -323,15 +323,45 @@ async function extractCover(zip, opfDir, opfXml, manifestItems) {
       );
     }
 
-    if (!coverId || !manifestItems[coverId]) return null;
-    const item = manifestItems[coverId];
-    if (!item.type.startsWith('image/')) return null;
+    // Tìm href từ manifest (coverId có thể là id hoặc chính là href/tên file)
+    let href = null;
+    let mediaType = 'image/jpeg';
 
-    const href = opfDir + item.href;
-    const imgFile = zip.file(href) || zip.file(decodeURIComponent(href));
+    if (coverId && manifestItems[coverId]) {
+      // coverId là id của item
+      href = opfDir + manifestItems[coverId].href;
+      mediaType = manifestItems[coverId].type;
+    } else if (coverId) {
+      // coverId có thể là tên file trực tiếp (không qua id)
+      const entry = Object.values(manifestItems).find(item =>
+        item.href === coverId || item.href.endsWith('/' + coverId)
+      );
+      if (entry) {
+        href = opfDir + entry.href;
+        mediaType = entry.type;
+      } else {
+        // Thử dùng thẳng coverId như là path
+        href = opfDir + coverId;
+      }
+    }
+
+    if (!href) return null;
+
+    // Tìm file trong zip — thử nhiều cách
+    const imgFile = zip.file(href)
+      || zip.file(decodeURIComponent(href))
+      || zip.file(href.replace(/^\//, ''))
+      // Fallback: tìm theo tên file cuối cùng
+      || (() => {
+        const name = href.split('/').pop();
+        return Object.keys(zip.files).find(k => k.endsWith(name))
+          ? zip.file(Object.keys(zip.files).find(k => k.endsWith(name)))
+          : null;
+      })();
+
     if (!imgFile) return null;
 
-    const blob = new Blob([await imgFile.async('arraybuffer')], { type: item.type });
+    const blob = new Blob([await imgFile.async('arraybuffer')], { type: mediaType });
     return await resizeImage(blob, 200);
   } catch(e) {
     return null;
