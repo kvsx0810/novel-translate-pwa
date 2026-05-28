@@ -3467,6 +3467,7 @@
         getImportedSources: getImportedSources,
         getImportedSourcesFull: getImportedSourcesFull,
         restoreImports: restoreImports,
+        rebuildFromDB: rebuildFromDB,
         removeImportedSource: removeImportedSource,
         clearAllImported: clearAllImported,
         get customCount() { return customEntries.size; },
