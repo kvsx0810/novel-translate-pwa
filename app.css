@@ -10,53 +10,107 @@ body {
 }
 
 /* ── Themes ──────────────────────────────────────────────────────────────── */
+/* Preset 1: Đêm đen — pure dark */
 .theme-dark {
-  --bg: #0f0f14;
-  --bg2: #16161e;
-  --bg3: #1e1e2e;
-  --bg4: #2a2a3e;
-  --border: #2e2e45;
-  --text: #cdd6f4;
-  --text2: #a6adc8;
-  --text3: #6c7086;
-  --accent: #89b4fa;
-  --accent2: #cba6f7;
-  --green: #a6e3a1;
-  --red: #f38ba8;
-  --amber: #fab387;
+  --bg: #131313;
+  --bg2: #1c1c1c;
+  --bg3: #252525;
+  --bg4: #2e2e2e;
+  --border: #333333;
+  --text: #d0cec8;
+  --text2: #9a9690;
+  --text3: #5a5650;
+  --accent: #c8a96e;
+  --accent2: #e0c080;
+  --green: #7ec8a0;
+  --red: #e07878;
+  --amber: #c8a96e;
+  --shadow: rgba(0,0,0,0.7);
+}
+/* Preset 2: Đêm xanh — Qidian default dark */
+.theme-night {
+  --bg: #1a1f2e;
+  --bg2: #222840;
+  --bg3: #2a3050;
+  --bg4: #323860;
+  --border: #3a4268;
+  --text: #c8d0e8;
+  --text2: #8898c0;
+  --text3: #506080;
+  --accent: #7eb8f0;
+  --accent2: #a090e0;
+  --green: #78c8a0;
+  --red: #e07878;
+  --amber: #e0b870;
   --shadow: rgba(0,0,0,0.6);
 }
+/* Preset 3: Nâu ấm — sepia classic */
 .theme-sepia {
-  --bg: #1c1410;
-  --bg2: #231a13;
-  --bg3: #2d2218;
-  --bg4: #3a2c20;
-  --border: #4a3828;
-  --text: #e8d5b5;
-  --text2: #c4a882;
-  --text3: #8a6e50;
-  --accent: #d4a063;
-  --accent2: #c87941;
-  --green: #7ec8a0;
-  --red: #e07070;
-  --amber: #e8a055;
+  --bg: #2a1f14;
+  --bg2: #342618;
+  --bg3: #3e2e1e;
+  --bg4: #4a3828;
+  --border: #5a4535;
+  --text: #e8d8b8;
+  --text2: #c0a878;
+  --text3: #887050;
+  --accent: #d4a060;
+  --accent2: #e8b870;
+  --green: #78c890;
+  --red: #e08070;
+  --amber: #d4a060;
   --shadow: rgba(0,0,0,0.5);
 }
+/* Preset 4: Xanh lá — eye comfort */
+.theme-green {
+  --bg: #1a2818;
+  --bg2: #203020;
+  --bg3: #283828;
+  --bg4: #304030;
+  --border: #3a5038;
+  --text: #d0e8c8;
+  --text2: #98c090;
+  --text3: #607858;
+  --accent: #80c870;
+  --accent2: #a0d890;
+  --green: #80c870;
+  --red: #e08878;
+  --amber: #d0b068;
+  --shadow: rgba(0,0,0,0.5);
+}
+/* Preset 5: Kem vàng — warm light */
+.theme-cream {
+  --bg: #f2ead8;
+  --bg2: #e8dfc8;
+  --bg3: #ddd4bc;
+  --bg4: #cfc8b0;
+  --border: #c0b89a;
+  --text: #2a2018;
+  --text2: #5a4838;
+  --text3: #8a7868;
+  --accent: #8a5c2a;
+  --accent2: #a07040;
+  --green: #3a7848;
+  --red: #b04038;
+  --amber: #a07030;
+  --shadow: rgba(0,0,0,0.12);
+}
+/* Preset 6: Trắng sáng — clean light */
 .theme-light {
-  --bg: #f5f0e8;
-  --bg2: #ece6d8;
-  --bg3: #e0d8c8;
-  --bg4: #d4ccba;
-  --border: #c0b8a8;
-  --text: #2c2416;
-  --text2: #5a4e3c;
-  --text3: #8a7e6c;
-  --accent: #4a7fc0;
-  --accent2: #7b5ea7;
-  --green: #3a8a58;
-  --red: #c04040;
-  --amber: #c07020;
-  --shadow: rgba(0,0,0,0.15);
+  --bg: #f8f6f2;
+  --bg2: #eeece8;
+  --bg3: #e4e0da;
+  --bg4: #d8d4cc;
+  --border: #c8c4bc;
+  --text: #1e1c18;
+  --text2: #4a4840;
+  --text3: #807c74;
+  --accent: #5a7cc0;
+  --accent2: #7868b0;
+  --green: #3a8050;
+  --red: #b03838;
+  --amber: #a07020;
+  --shadow: rgba(0,0,0,0.1);
 }
 
 body { background: var(--bg); color: var(--text); }
@@ -595,4 +649,44 @@ span.cv-word.selected { background: rgba(137,180,250,0.25); }
   background: var(--bg3);
   cursor: pointer;
   padding: 2px;
+}
+
+/* ── Theme swatches ──────────────────────────────────────────────────────── */
+.theme-swatches {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.swatch-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  outline: none;
+}
+.swatch-btn:hover { transform: scale(1.15); }
+.swatch-btn.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+.swatch-custom {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 2px dashed var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  position: relative;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+.swatch-custom:hover { border-color: var(--accent); }
+.swatch-custom input[type="color"] {
+  position: absolute; inset: 0;
+  opacity: 0; cursor: pointer;
+  width: 100%; height: 100%;
+  border-radius: 50%;
 }

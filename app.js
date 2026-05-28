@@ -18,6 +18,7 @@ const state = {
   lineWidth: 680,
   lineHeight: 1.9,
   theme: 'dark',
+  bgColor: '',          // '' = dùng theme preset, hoặc hex custom
   fontFamily: 'lora',   // 'lora' | 'inter' | 'serif' | 'sans'
   textColor: '',        // '' = dùng theme mặc định, hoặc hex custom
   // library
@@ -800,6 +801,7 @@ async function loadSavedState() {
   state.theme         = lsGet('theme', 'dark');
   state.fontFamily    = lsGet('fontFamily', 'lora');
   state.textColor     = lsGet('textColor', '');
+  state.bgColor       = lsGet('bgColor', '');
   // Cleanup: xóa các key IDB cũ không còn dùng
   try {
     const db = await dbOpen();
@@ -915,9 +917,26 @@ function applyReaderSettings() {
   // Text color override
   root.style.setProperty('--reader-text-color', state.textColor || 'var(--text)');
 
+  // Theme class
   document.body.className = 'theme-' + state.theme;
-  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === state.theme));
-  document.querySelectorAll('.font-btn').forEach(b => b.classList.toggle('active', b.dataset.font === state.fontFamily));
+
+  // BG color override (custom)
+  if (state.bgColor) {
+    root.style.setProperty('--bg-override', state.bgColor);
+    document.body.style.background = state.bgColor;
+  } else {
+    root.style.removeProperty('--bg-override');
+    document.body.style.background = '';
+  }
+
+  // Sync swatch active state
+  document.querySelectorAll('.swatch-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.theme === state.theme && !state.bgColor)
+  );
+  document.querySelectorAll('.font-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.font === state.fontFamily)
+  );
+
   document.getElementById('font-size').value = state.fontSize;
   document.getElementById('font-size-val').textContent = state.fontSize;
   document.getElementById('line-width').value = state.lineWidth;
@@ -925,7 +944,9 @@ function applyReaderSettings() {
   document.getElementById('line-height').value = state.lineHeight;
   document.getElementById('line-height-val').textContent = state.lineHeight;
   const colorInput = document.getElementById('text-color');
-  if (colorInput) colorInput.value = state.textColor || '#cdd6f4';
+  if (colorInput) colorInput.value = state.textColor || '#d0cec8';
+  const bgInput = document.getElementById('bg-color');
+  if (bgInput) bgInput.value = state.bgColor || '#131313';
 }
 
 function buildToc() {
@@ -1157,13 +1178,24 @@ document.getElementById('toc-search').addEventListener('input', function() {
   });
 });
 
-// Theme buttons
-document.querySelectorAll('.theme-btn').forEach(btn => {
+// Theme swatch buttons
+document.querySelectorAll('.swatch-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     state.theme = btn.dataset.theme;
+    state.bgColor = ''; // reset custom bg khi chọn preset
     lsSet('theme', state.theme);
+    lsSet('bgColor', '');
     applyReaderSettings();
   });
+});
+
+// Custom background color
+document.getElementById('bg-color').addEventListener('input', function() {
+  state.bgColor = this.value;
+  lsSet('bgColor', state.bgColor);
+  document.body.style.background = state.bgColor;
+  // deactivate all swatches
+  document.querySelectorAll('.swatch-btn').forEach(b => b.classList.remove('active'));
 });
 
 // Font family buttons
