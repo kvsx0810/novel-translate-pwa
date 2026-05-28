@@ -6,7 +6,6 @@ const state = {
   engine: null,
   engineReady: false,
   metadataLoaded: false,
-  metadataJson: null,  // Lưu tạm trong RAM, không cần IDB
   epub: null,
   chapters: [],       // [{id, title, content(raw html/text)}]
   currentChap: 0,
@@ -142,29 +141,9 @@ async function initEngine() {
   if (!engine) throw new Error('DictEngine không tìm thấy');
   state.engine = engine;
 
-  // Lấy metadata từ state (đã được load bởi autoLoadEngineAndMeta)
-  const metadata = state.metadataJson;
-  if (!metadata) throw new Error('metadata.json chưa được load');
-
-  // Build phienAmMap
-  for (const dict of metadata.data.importedDicts) {
-    if (dict.name === 'ChinesePhienAmWords.txt') {
-      for (const line of dict.tsv.split('\n')) {
-        const parts = line.split('\t');
-        if (parts.length >= 2 && parts[0].length === 1) state.phienAmMap.set(parts[0], parts[1]);
-      }
-    }
-    const priority = parseInt(dict.tsv.split('\t')[2]) || 10;
-    const kv = dict.tsv.split('\n')
-      .map(l => { const p = l.split('\t'); return p.length >= 2 ? `${p[0]}=${p[1]}` : ''; })
-      .filter(Boolean).join('\n');
-    await engine.importDictText(kv, priority, dict.name);
-  }
-
-  // Load custom-global
+  // Trie is already built by autoLoadEngineAndMeta (rebuildFromDB ran there).
+  // Just layer on user customizations — never re-import base dicts here.
   if (state.customGlobal) await engine.importDictText(state.customGlobal, 990, 'custom-global');
-
-  // Load active profile
   await loadActiveProfileToEngine();
 
   state.engineReady = true;
@@ -564,10 +543,12 @@ async function loadSavedState() {
   state.lineWidth     = lsGet('lineWidth', 680);
   state.lineHeight    = lsGet('lineHeight', 1.9);
   state.theme         = lsGet('theme', 'dark');
-  // Xóa metadata cũ từ IDB (đã chuyển sang Cache API qua SW)
+  // Cleanup: xóa các key IDB cũ không còn dùng
   try {
     const db = await dbOpen();
-    db.transaction('kv','readwrite').objectStore('kv').delete('metadata');
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').delete('metadata');       // cũ: 65MB JSON
+    tx.objectStore('kv').delete('metadata-flag');  // cũ: flag từ approach trước
   } catch(e) { /* ignore */ }
 }
 
@@ -726,14 +707,19 @@ function setStepError(step, msg) {
   document.getElementById('setup-error').textContent = msg;
 }
 
-// Auto-load engine + metadata (metadata parsed in Web Worker to avoid blocking UI)
+// Auto-load engine + metadata
+// Architecture:
+//   - 65MB JSON fetched via Worker; Service Worker caches the R2 response on disk (Cache-first)
+//   - Parsed TSV imported into dict-engine's OWN IDB (cnvn-dict) ONCE on first run
+//   - On reload: cnvn-dict already has entries → rebuildFromDB() (pure RAM, no network, no write)
+//   - phienAmMap saved to localStorage as tiny array (< 500KB), restored instantly on reload
 const METADATA_URL = 'https://pub-9771e4ccafeb496c99991ae2aa19d12e.r2.dev/metadata.json';
 
 async function autoLoadEngineAndMeta() {
   try {
     document.getElementById('engine-status').textContent = 'Đang tải engine...';
 
-    // Load dict-engine.js
+    // 1. Load dict-engine.js (SW cache-first)
     await new Promise((res, rej) => {
       const s = document.createElement('script');
       s.src = './core/dict-engine.js';
@@ -742,39 +728,82 @@ async function autoLoadEngineAndMeta() {
       document.head.appendChild(s);
     });
     if (!window.DictEngine) throw new Error('DictEngine không tìm thấy sau khi load');
+    const engine = window.DictEngine;
 
-    // Fetch + parse in Web Worker (Service Worker cache R2 response ở disk, không lưu IDB)
+    // 2. Check if base dicts already live in engine's cnvn-dict IDB
+    const existingSources = await engine.getImportedSources().catch(() => []);
+    if (existingSources.length > 0) {
+      // Reload path: rebuild Trie from cnvn-dict — pure in-memory, no network, no IDB write
+      document.getElementById('engine-status').textContent = 'Đang khôi phục từ điển...';
+      await engine.rebuildFromDB();
+
+      if (engine.entryCount > 0) {
+        // Restore phienAmMap from localStorage (tiny, instant)
+        const stored = lsGet('phienAmMap', null);
+        if (stored) state.phienAmMap = new Map(stored);
+        setStepDone('engine', `✓ Engine + ${existingSources.length} từ điển (cache)`);
+        setupReady.engine = true;
+        checkSetupReady();
+        return;
+      }
+      // entryCount == 0: cnvn-dict was wiped independently — fall through to re-import
+      console.warn('cnvn-dict trống, fetch lại...');
+    }
+
+    // 3. First run (or after IDB wipe): fetch 65MB via Worker
+    //    Service Worker caches R2 response so subsequent fetches are from disk
     const isCached = await caches.match(METADATA_URL).then(r => !!r).catch(() => false);
     document.getElementById('engine-status').textContent = isCached
-      ? 'Đang tải từ điển (cache)...'
+      ? 'Đang parse từ điển (SW cache)...'
       : 'Đang tải từ điển (lần đầu ~65MB)...';
+
     const json = await new Promise((res, rej) => {
       const worker = new Worker('./metadata-worker.js');
       worker.postMessage({ url: METADATA_URL });
       worker.onmessage = e => {
         const { type, text, data, message } = e.data;
-        if (type === 'progress') {
-          document.getElementById('engine-status').textContent = text;
-        } else if (type === 'done') {
-          worker.terminate();
-          res(data);
-        } else if (type === 'error') {
-          worker.terminate();
-          rej(new Error(message));
-        }
+        if (type === 'progress') document.getElementById('engine-status').textContent = text;
+        else if (type === 'done') { worker.terminate(); res(data); }
+        else if (type === 'error') { worker.terminate(); rej(new Error(message)); }
       };
       worker.onerror = e => { worker.terminate(); rej(new Error(e.message)); };
     });
 
-    setStepDone('engine', `✓ Engine + ${json.data.importedDicts.length} từ điển${isCached ? ' (cache)' : ''}`);
-    state.metadataJson = json;
+    // 4. Import into engine's cnvn-dict IDB — happens ONCE per install, never on reload
+    document.getElementById('engine-status').textContent = 'Đang import từ điển...';
+    const dicts = json.data.importedDicts;
+    const phienAmEntries = [];
+
+    for (let i = 0; i < dicts.length; i++) {
+      const dict = dicts[i];
+      document.getElementById('engine-status').textContent =
+        `Đang import... (${i + 1}/${dicts.length})`;
+      if (dict.name === 'ChinesePhienAmWords.txt') {
+        for (const line of dict.tsv.split('\n')) {
+          const parts = line.split('\t');
+          if (parts.length >= 2 && parts[0].length === 1) {
+            state.phienAmMap.set(parts[0], parts[1]);
+            phienAmEntries.push([parts[0], parts[1]]);
+          }
+        }
+      }
+      const priority = parseInt(dict.tsv.split('\t')[2]) || 10;
+      const kv = dict.tsv.split('\n')
+        .map(l => { const p = l.split('\t'); return p.length >= 2 ? `${p[0]}=${p[1]}` : ''; })
+        .filter(Boolean).join('\n');
+      await engine.importDictText(kv, priority, dict.name);
+    }
+
+    // 5. Persist phienAmMap to localStorage (tiny array, < 500KB)
+    lsSet('phienAmMap', phienAmEntries);
+
+    setStepDone('engine', `✓ Engine + ${dicts.length} từ điển`);
     setupReady.engine = true;
   } catch(e) {
     setStepError('engine', '✗ ' + e.message);
   }
   checkSetupReady();
 }
-
 // Load EPUB + save to IDB for restore on reload
 document.getElementById('input-epub').addEventListener('change', async function() {
   const file = this.files[0]; if (!file) return;

@@ -1,16 +1,15 @@
 // service-worker.js
-const CACHE = 'novel-reader-cv-v4';
+const CACHE = 'novel-reader-cv-v3';
 
 const CACHE_FIRST_PATTERNS = [
   '/novel-translate-pwa/core/',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'cdnjs.cloudflare.com',
-  // metadata.json từ R2 — cache-first, ~65MB, stable
-  'r2.dev',
+  'r2.dev',  // 65MB metadata.json — cache-first so reload reads from disk, not network
 ];
 
-// Never cache
+// Never cache — LFS pointer (empty file in repo)
 const NEVER_CACHE = [
   '/novel-translate-pwa/data/',
 ];
