@@ -18,6 +18,8 @@ const state = {
   lineWidth: 680,
   lineHeight: 1.9,
   theme: 'dark',
+  fontFamily: 'lora',   // 'lora' | 'inter' | 'serif' | 'sans'
+  textColor: '',        // '' = dùng theme mặc định, hoặc hex custom
   // library
   library: [],        // [{bookId, title, chapCount, addedAt}]
   activeBookId: null, // bookId đang đọc
@@ -796,6 +798,8 @@ async function loadSavedState() {
   state.lineWidth     = lsGet('lineWidth', 680);
   state.lineHeight    = lsGet('lineHeight', 1.9);
   state.theme         = lsGet('theme', 'dark');
+  state.fontFamily    = lsGet('fontFamily', 'lora');
+  state.textColor     = lsGet('textColor', '');
   // Cleanup: xóa các key IDB cũ không còn dùng
   try {
     const db = await dbOpen();
@@ -898,14 +902,30 @@ function applyReaderSettings() {
   root.style.setProperty('--font-size', state.fontSize + 'px');
   root.style.setProperty('--line-width', state.lineWidth + 'px');
   root.style.setProperty('--line-height', state.lineHeight);
+
+  // Font family
+  const FONTS = {
+    lora:  "'Lora', serif",
+    inter: "'Inter', sans-serif",
+    serif: "Georgia, 'Times New Roman', serif",
+    sans:  "Arial, Helvetica, sans-serif",
+  };
+  root.style.setProperty('--reader-font', FONTS[state.fontFamily] || FONTS.lora);
+
+  // Text color override
+  root.style.setProperty('--reader-text-color', state.textColor || 'var(--text)');
+
   document.body.className = 'theme-' + state.theme;
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === state.theme));
+  document.querySelectorAll('.font-btn').forEach(b => b.classList.toggle('active', b.dataset.font === state.fontFamily));
   document.getElementById('font-size').value = state.fontSize;
   document.getElementById('font-size-val').textContent = state.fontSize;
   document.getElementById('line-width').value = state.lineWidth;
   document.getElementById('line-width-val').textContent = state.lineWidth;
   document.getElementById('line-height').value = state.lineHeight;
   document.getElementById('line-height-val').textContent = state.lineHeight;
+  const colorInput = document.getElementById('text-color');
+  if (colorInput) colorInput.value = state.textColor || '#cdd6f4';
 }
 
 function buildToc() {
@@ -913,7 +933,14 @@ function buildToc() {
   list.innerHTML = '';
   state.chapters.forEach((chap, i) => {
     const li = document.createElement('li');
-    li.textContent = chap.title;
+    // Dịch tên chương nếu có CJK và engine sẵn sàng
+    if (state.engineReady && CJK_RE.test(chap.title)) {
+      const span = document.createElement('span');
+      translateAndInsert(chap.title, span);
+      li.textContent = span.textContent;
+    } else {
+      li.textContent = chap.title;
+    }
     if (i === state.currentChap) li.classList.add('active');
     li.addEventListener('click', () => { goToChapter(i); closeToc(); });
     list.appendChild(li);
@@ -1139,6 +1166,28 @@ document.querySelectorAll('.theme-btn').forEach(btn => {
   });
 });
 
+// Font family buttons
+document.querySelectorAll('.font-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.fontFamily = btn.dataset.font;
+    lsSet('fontFamily', state.fontFamily);
+    applyReaderSettings();
+  });
+});
+
+// Text color picker
+document.getElementById('text-color').addEventListener('input', function() {
+  state.textColor = this.value;
+  lsSet('textColor', state.textColor);
+  document.documentElement.style.setProperty('--reader-text-color', state.textColor);
+});
+document.getElementById('btn-reset-color').addEventListener('click', () => {
+  state.textColor = '';
+  lsSet('textColor', '');
+  document.documentElement.style.setProperty('--reader-text-color', 'var(--text)');
+  document.getElementById('text-color').value = '#cdd6f4';
+});
+
 // Font size slider
 document.getElementById('font-size').addEventListener('input', function() {
   state.fontSize = +this.value;
@@ -1275,7 +1324,28 @@ function downloadText(text, filename) {
   URL.revokeObjectURL(a.href);
 }
 
-// ── Click handler for word spans ──────────────────────────────────────────────
+// ── Swipe để chuyển chương ────────────────────────────────────────────────────
+(function() {
+  const el = document.getElementById('reader-content');
+  let startX = 0, startY = 0, startTime = 0;
+
+  el.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startTime = Date.now();
+  }, { passive: true });
+
+  el.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    const dt = Date.now() - startTime;
+    // Swipe ngang: dx > 60px, nhanh < 400ms, ngang hơn dọc
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 400) {
+      if (dx < 0) goToChapter(state.currentChap + 1); // swipe trái → chương sau
+      else        goToChapter(state.currentChap - 1); // swipe phải → chương trước
+    }
+  }, { passive: true });
+})();
 document.addEventListener('mousedown', e => {
   // If click inside popup — do nothing
   if (popup && popup.contains(e.target)) return;

@@ -186,10 +186,10 @@ body { background: var(--bg); color: var(--text); }
   line-height: 1.4;
 }
 .chapter-body {
-  font-family: 'Lora', serif;
+  font-family: var(--reader-font, 'Lora', serif);
   font-size: var(--font-size, 18px);
   line-height: var(--line-height, 1.9);
-  color: var(--text);
+  color: var(--reader-text-color, var(--text));
 }
 .chapter-body p { margin-bottom: 1.1em; }
 
@@ -567,3 +567,32 @@ span.cv-word.selected { background: rgba(137,180,250,0.25); }
   z-index: 50;
 }
 .btn-add-book:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(137,180,250,0.55); }
+
+/* ── Font & Color settings ───────────────────────────────────────────────── */
+.font-btn {
+  flex: 1;
+  padding: 7px 4px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.font-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.font-btn:hover:not(.active) { background: var(--bg4); color: var(--text); }
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.color-picker {
+  width: 44px; height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg3);
+  cursor: pointer;
+  padding: 2px;
+}
