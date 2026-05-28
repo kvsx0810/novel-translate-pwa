@@ -114,12 +114,17 @@ function renderLibraryGrid() {
     const { bg, fg } = bookColor(book.title);
     const initial = [...book.title].find(c => /[\u4e00-\u9fff\u3400-\u4dbfa-zA-Z]/.test(c)) || '?';
 
+    const hasCover = !!book.coverDataUrl;
+    const coverStyle = hasCover
+      ? `background-image:url(${book.coverDataUrl}); background-size:cover; background-position:center; color:${fg}`
+      : `background:${bg}; color:${fg}`;
+
     const card = document.createElement('div');
     card.className = 'book-card';
     card.dataset.bookId = book.bookId;
     card.innerHTML = `
-      <div class="book-cover" style="background:${bg}; color:${fg}">
-        <span class="book-initial">${initial}</span>
+      <div class="book-cover" style="${coverStyle}">
+        ${hasCover ? '' : `<span class="book-initial">${initial}</span>`}
         ${pct > 0 ? `<div class="book-progress-bar"><div class="book-progress-fill" style="width:${pct}%"></div></div>` : ''}
         <button class="book-delete-btn" data-book-id="${book.bookId}" title="Xóa sách">✕</button>
       </div>
@@ -164,6 +169,7 @@ async function addBook(file) {
       title: result.title,
       chapCount: result.chapters.length,
       addedAt: Date.now(),
+      coverDataUrl: result.coverDataUrl || null,
     };
     state.library.unshift(entry); // newest first
     await saveLibrary();
@@ -293,7 +299,63 @@ async function parseEpub(file) {
   }
 
   if (chapters.length === 0) throw new Error('Không tìm thấy chương nào trong EPUB');
-  return { title: bookTitle, chapters };
+
+  // Extract cover image
+  const coverDataUrl = await extractCover(zip, opfDir, opfXml, manifestItems);
+
+  return { title: bookTitle, chapters, coverDataUrl };
+}
+
+// Tìm cover image trong EPUB, resize xuống ~200px width, trả về data URL (hoặc null)
+async function extractCover(zip, opfDir, opfXml, manifestItems) {
+  try {
+    // Cách 1: <meta name="cover" content="id"/>
+    let coverId = opfXml.match(/<meta\s+name="cover"\s+content="([^"]+)"/i)?.[1];
+    // Cách 2: <item properties="cover-image"/>
+    if (!coverId) {
+      const m = opfXml.match(/<item\s[^>]*properties="cover-image"[^>]*id="([^"]+)"/);
+      coverId = m?.[1];
+    }
+    // Cách 3: id hoặc href chứa "cover"
+    if (!coverId) {
+      coverId = Object.keys(manifestItems).find(id =>
+        id.toLowerCase().includes('cover') && manifestItems[id].type.startsWith('image/')
+      );
+    }
+
+    if (!coverId || !manifestItems[coverId]) return null;
+    const item = manifestItems[coverId];
+    if (!item.type.startsWith('image/')) return null;
+
+    const href = opfDir + item.href;
+    const imgFile = zip.file(href) || zip.file(decodeURIComponent(href));
+    if (!imgFile) return null;
+
+    const blob = new Blob([await imgFile.async('arraybuffer')], { type: item.type });
+    return await resizeImage(blob, 200);
+  } catch(e) {
+    return null;
+  }
+}
+
+// Resize ảnh xuống maxWidth bằng Canvas, trả về data URL
+function resizeImage(blob, maxWidth) {
+  return new Promise((res) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const ratio = Math.min(1, maxWidth / img.width);
+      const w = Math.round(img.width * ratio);
+      const h = Math.round(img.height * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+    img.src = url;
+  });
 }
 
 // ── Engine Init ───────────────────────────────────────────────────────────────
@@ -1231,7 +1293,7 @@ async function tryRestoreEpub() {
     const result = await parseEpub(file);
     const bookId = Date.now().toString();
     await dbSet(`epub:${bookId}`, { name: cached.name, data: cached.data });
-    state.library.push({ bookId, title: result.title, chapCount: result.chapters.length, addedAt: Date.now() });
+    state.library.push({ bookId, title: result.title, chapCount: result.chapters.length, addedAt: Date.now(), coverDataUrl: result.coverDataUrl || null });
     await saveLibrary();
     await dbDelete('epub-file');
     renderLibraryGrid();
