@@ -18,6 +18,9 @@ const state = {
   lineWidth: 680,
   lineHeight: 1.9,
   theme: 'dark',
+  // library
+  library: [],        // [{bookId, title, chapCount, addedAt}]
+  activeBookId: null, // bookId đang đọc
 };
 
 // Selected spans for popup
@@ -57,6 +60,164 @@ async function dbSet(key, val) {
     req.onsuccess = () => res();
     req.onerror   = e => rej(e.target.error);
   });
+}
+async function dbDelete(key) {
+  const db = await dbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction('kv','readwrite').objectStore('kv').delete(key);
+    req.onsuccess = () => res();
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+// ── Library helpers ───────────────────────────────────────────────────────────
+async function saveLibrary() {
+  await dbSet('library', state.library);
+}
+
+async function loadLibrary() {
+  state.library = (await dbGet('library')) || [];
+}
+
+// Màu placeholder cover — hash từ title
+function bookColor(title) {
+  const COLORS = [
+    ['#1e3a5f','#89b4fa'], ['#3a1e5f','#cba6f7'], ['#1e5f3a','#a6e3a1'],
+    ['#5f3a1e','#fab387'], ['#5f1e3a','#f38ba8'], ['#1e5f5f','#94e2d5'],
+    ['#3d3a1e','#f9e2af'], ['#2a2a3e','#b4befe'],
+  ];
+  let h = 0;
+  for (const c of title) h = (h * 31 + c.charCodeAt(0)) & 0xfffffff;
+  const [bg, fg] = COLORS[h % COLORS.length];
+  return { bg, fg };
+}
+
+function readPercent(bookTitle, chapCount) {
+  if (!chapCount) return 0;
+  const last = lsGet('lastChap_' + bookTitle, 0);
+  return Math.round((last / chapCount) * 100);
+}
+
+function renderLibraryGrid() {
+  const grid = document.getElementById('library-grid');
+  const empty = document.getElementById('library-empty');
+  grid.innerHTML = '';
+
+  if (state.library.length === 0) {
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  for (const book of state.library) {
+    const pct = readPercent(book.title, book.chapCount);
+    const { bg, fg } = bookColor(book.title);
+    const initial = [...book.title].find(c => /[\u4e00-\u9fff\u3400-\u4dbfa-zA-Z]/.test(c)) || '?';
+
+    const card = document.createElement('div');
+    card.className = 'book-card';
+    card.dataset.bookId = book.bookId;
+    card.innerHTML = `
+      <div class="book-cover" style="background:${bg}; color:${fg}">
+        <span class="book-initial">${initial}</span>
+        ${pct > 0 ? `<div class="book-progress-bar"><div class="book-progress-fill" style="width:${pct}%"></div></div>` : ''}
+        <button class="book-delete-btn" data-book-id="${book.bookId}" title="Xóa sách">✕</button>
+      </div>
+      <div class="book-info">
+        <div class="book-title">${book.title}</div>
+        <div class="book-meta">${book.chapCount} chương${pct > 0 ? ` · ${pct}%` : ''}</div>
+      </div>
+    `;
+
+    card.querySelector('.book-cover').addEventListener('click', (e) => {
+      if (e.target.closest('.book-delete-btn')) return;
+      openBook(book.bookId);
+    });
+    card.querySelector('.book-info').addEventListener('click', () => openBook(book.bookId));
+    card.querySelector('.book-delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteBook(book.bookId, book.title);
+    });
+
+    grid.appendChild(card);
+  }
+}
+
+async function addBook(file) {
+  document.getElementById('library-error').textContent = '';
+  const loadingCard = document.createElement('div');
+  loadingCard.className = 'book-card book-card-loading';
+  loadingCard.innerHTML = `<div class="book-cover book-cover-loading"><div class="spinner"></div></div><div class="book-info"><div class="book-title">Đang xử lý...</div></div>`;
+  const grid = document.getElementById('library-grid');
+  document.getElementById('library-empty').style.display = 'none';
+  grid.prepend(loadingCard);
+
+  try {
+    const result = await parseEpub(file);
+    const buf = await file.arrayBuffer();
+    const bookId = Date.now().toString();
+
+    await dbSet(`epub:${bookId}`, { name: file.name, data: buf });
+
+    const entry = {
+      bookId,
+      title: result.title,
+      chapCount: result.chapters.length,
+      addedAt: Date.now(),
+    };
+    state.library.unshift(entry); // newest first
+    await saveLibrary();
+    renderLibraryGrid();
+  } catch(e) {
+    document.getElementById('library-error').textContent = '✗ ' + e.message;
+    loadingCard.remove();
+    if (state.library.length === 0) document.getElementById('library-empty').style.display = 'flex';
+  }
+}
+
+async function deleteBook(bookId, title) {
+  if (!confirm(`Xóa "${title}"?`)) return;
+  await dbDelete(`epub:${bookId}`);
+  state.library = state.library.filter(b => b.bookId !== bookId);
+  await saveLibrary();
+  renderLibraryGrid();
+}
+
+async function openBook(bookId) {
+  const entry = state.library.find(b => b.bookId === bookId);
+  if (!entry) return;
+
+  // Show setup screen with loading state
+  showScreen('setup');
+  document.getElementById('epub-status').textContent = 'Đang mở sách...';
+  document.getElementById('epub-badge').textContent = '⏳';
+  document.getElementById('step-epub').classList.remove('done','error');
+
+  try {
+    const cached = await dbGet(`epub:${bookId}`);
+    if (!cached) throw new Error('Không tìm thấy file EPUB trong bộ nhớ');
+    const file = new File([cached.data], cached.name, { type: 'application/epub+zip' });
+    const result = await parseEpub(file);
+    state.epub = result;
+    state.chapters = result.chapters;
+    state.activeBookId = bookId;
+    setStepDone('epub', `✓ ${result.title} — ${result.chapters.length} chương`);
+    setupReady.epub = true;
+  } catch(e) {
+    setStepError('epub', '✗ ' + e.message);
+    setupReady.epub = false;
+  }
+  checkSetupReady();
+}
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active');
+    s.style.display = '';
+  });
+  const el = document.getElementById('screen-' + name);
+  el.classList.add('active');
+  if (name === 'reader') el.style.display = 'flex';
 }
 
 function lsGet(k, def) {
@@ -744,6 +905,7 @@ async function autoLoadEngineAndMeta() {
         setStepDone('engine', `✓ Engine + ${existingSources.length} từ điển (cache)`);
         setupReady.engine = true;
         checkSetupReady();
+        updateLibraryEngineStatus('✓ Engine sẵn sàng');
         return;
       }
       // entryCount == 0: cnvn-dict was wiped independently — fall through to re-import
@@ -799,11 +961,18 @@ async function autoLoadEngineAndMeta() {
 
     setStepDone('engine', `✓ Engine + ${dicts.length} từ điển`);
     setupReady.engine = true;
+    updateLibraryEngineStatus('✓ Engine sẵn sàng');
   } catch(e) {
     setStepError('engine', '✗ ' + e.message);
+    updateLibraryEngineStatus('✗ Lỗi engine');
   }
   checkSetupReady();
 }
+function updateLibraryEngineStatus(msg) {
+  const el = document.getElementById('library-engine-status');
+  if (el) el.textContent = msg;
+}
+
 // Load EPUB + save to IDB for restore on reload
 document.getElementById('input-epub').addEventListener('change', async function() {
   const file = this.files[0]; if (!file) return;
@@ -831,10 +1000,7 @@ document.getElementById('btn-start').addEventListener('click', async () => {
   try {
     await initEngine();
     // Switch to reader
-    document.getElementById('screen-setup').classList.remove('active');
-    const reader = document.getElementById('screen-reader');
-    reader.style.display = 'flex';
-    reader.classList.add('active');
+    showScreen('reader');
     applyReaderSettings();
     buildToc();
     // Restore last read position
@@ -849,9 +1015,8 @@ document.getElementById('btn-start').addEventListener('click', async () => {
 
 // ── Reader Event Listeners ────────────────────────────────────────────────────
 document.getElementById('btn-back-setup').addEventListener('click', () => {
-  document.getElementById('screen-reader').style.display = 'none';
-  document.getElementById('screen-reader').classList.remove('active');
-  document.getElementById('screen-setup').classList.add('active');
+  showScreen('library');
+  renderLibraryGrid(); // refresh % đọc
 });
 
 document.getElementById('btn-toc').addEventListener('click', openToc);
@@ -1039,29 +1204,51 @@ document.addEventListener('mousedown', e => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   await loadSavedState();
+  await loadLibrary();
   applyReaderSettings();
-  // Auto-load engine + metadata from repo
-  await autoLoadEngineAndMeta();
-  // Restore cached EPUB if available
-  await tryRestoreEpub();
+
+  // Render library immediately (before engine loads)
+  renderLibraryGrid();
+
+  // Engine loads in background — library is interactive immediately
+  autoLoadEngineAndMeta(); // no await — parallel
+
+  // Migrate legacy single-epub storage nếu có
+  tryRestoreEpub();
 })();
 
 async function tryRestoreEpub() {
+  // Legacy: migrate old single epub-file key into library
   try {
     const cached = await dbGet('epub-file');
     if (!cached) return;
-    document.getElementById('epub-status').textContent = 'Đang khôi phục sách đã đọc...';
+    // Check if already migrated
+    const alreadyIn = state.library.some(b => b.title === cached.name?.replace('.epub',''));
+    if (alreadyIn) { await dbDelete('epub-file'); return; }
+
+    // Migrate: parse + add to library
     const file = new File([cached.data], cached.name, { type: 'application/epub+zip' });
     const result = await parseEpub(file);
-    state.epub = result;
-    state.chapters = result.chapters;
-    setStepDone('epub', `✓ ${result.title} — ${result.chapters.length} chương (đã lưu)`);
-    setupReady.epub = true;
-    checkSetupReady();
+    const bookId = Date.now().toString();
+    await dbSet(`epub:${bookId}`, { name: cached.name, data: cached.data });
+    state.library.push({ bookId, title: result.title, chapCount: result.chapters.length, addedAt: Date.now() });
+    await saveLibrary();
+    await dbDelete('epub-file');
+    renderLibraryGrid();
   } catch(e) {
-    console.warn('Không thể khôi phục EPUB:', e);
+    console.warn('Migrate epub-file:', e);
   }
 }
+
+// ── Library Event Listeners ───────────────────────────────────────────────────
+document.getElementById('btn-add-book').addEventListener('click', () => {
+  document.getElementById('input-add-epub').click();
+});
+document.getElementById('input-add-epub').addEventListener('change', async function() {
+  const file = this.files[0]; if (!file) return;
+  await addBook(file);
+  this.value = '';
+});
 
 // ── Service Worker Registration ───────────────────────────────────────────────
 if ('serviceWorker' in navigator) {

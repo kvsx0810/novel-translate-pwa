@@ -14,8 +14,37 @@
 </head>
 <body class="theme-dark">
 
+<!-- ── LIBRARY SCREEN ─────────────────────────────────────────────────────── -->
+<div id="screen-library" class="screen active">
+  <div class="setup-bg"></div>
+  <div class="library-inner">
+    <div class="library-header">
+      <div class="logo logo-sm">
+        <span class="logo-zh">讀</span>
+        <div class="logo-text">
+          <h1>Đọc Truyện CV</h1>
+        </div>
+      </div>
+      <div class="library-engine-status" id="library-engine-status">⏳ Đang tải engine...</div>
+    </div>
+
+    <div id="library-grid" class="library-grid">
+      <!-- Book cards rendered here -->
+    </div>
+
+    <div class="library-empty" id="library-empty" style="display:none">
+      <div class="library-empty-icon">📚</div>
+      <p>Chưa có sách nào.<br>Bấm <strong>+</strong> để thêm file EPUB.</p>
+    </div>
+
+    <button class="btn-add-book" id="btn-add-book" title="Thêm sách">+</button>
+    <input type="file" id="input-add-epub" accept=".epub" hidden>
+    <div id="library-error" class="setup-error"></div>
+  </div>
+</div>
+
 <!-- ── SPLASH / SETUP SCREEN ─────────────────────────────────────────────── -->
-<div id="screen-setup" class="screen active">
+<div id="screen-setup" class="screen">
   <div class="setup-bg"></div>
   <div class="setup-inner">
     <div class="logo">
