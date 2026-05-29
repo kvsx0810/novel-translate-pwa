@@ -612,7 +612,7 @@ span.cv-word.selected { background: rgba(137,180,250,0.25); }
   border-radius: 50%;
   background: var(--accent);
   color: var(--bg);
-  font-size: 28px; font-weight: 300;
+  font-size: 22px; font-weight: 300;
   border: none;
   cursor: pointer;
   box-shadow: 0 4px 20px rgba(137,180,250,0.4);

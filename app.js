@@ -639,19 +639,22 @@ function goToChapter(idx, restoreScroll = false) {
   const body = document.getElementById('chapter-body');
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div> Đang dịch...</div>';
 
-  // Render async so UI can update
-  setTimeout(() => {
+  // Render async so UI can update, then restore scroll after layout is complete
+  requestAnimationFrame(() => {
     renderChapterContent(chap.bodyHTML);
-    const rc = document.getElementById('reader-content');
-    if (restoreScroll) {
-      const saved = lsGet(`scroll_${state.epub?.title}_${idx}`, 0);
-      rc.scrollTo(0, saved);
-    } else {
-      rc.scrollTo(0, 0);
-    }
-    // Track reading stats
-    trackReadChapter(idx);
-  }, 30);
+    // Double rAF: first frame renders DOM, second frame browser has laid out heights
+    requestAnimationFrame(() => {
+      const rc = document.getElementById('reader-content');
+      if (restoreScroll) {
+        const saved = lsGet(`scroll_${state.epub?.title}_${idx}`, 0);
+        if (saved > 0) rc.scrollTop = saved;
+      } else {
+        rc.scrollTop = 0;
+      }
+      // Track reading stats
+      trackReadChapter(idx);
+    });
+  });
 }
 
 // ── Reading Stats ─────────────────────────────────────────────────────────────

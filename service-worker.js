@@ -1,11 +1,12 @@
 // service-worker.js
-const CACHE = 'novel-reader-cv-v3';
+const CACHE = 'novel-reader-cv-v4';
 
 const CACHE_FIRST_PATTERNS = [
   '/novel-translate-pwa/core/',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'cdnjs.cloudflare.com',
+  'cdn.jsdelivr.net',
   'r2.dev',  // 65MB metadata.json — cache-first so reload reads from disk, not network
 ];
 

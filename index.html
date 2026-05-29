@@ -10,6 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="app.css">
 </head>
 <body class="theme-dark">
@@ -41,7 +42,7 @@
       <p>Chưa có sách nào.<br>Bấm <strong>+</strong> để thêm file EPUB.</p>
     </div>
 
-    <button class="btn-add-book" id="btn-add-book" title="Thêm sách">+</button>
+    <button class="btn-add-book" id="btn-add-book" title="Thêm sách"><i class="ti ti-book-upload" aria-hidden="true"></i></button>
     <input type="file" id="input-add-epub" accept=".epub" hidden>
     <div id="library-error" class="setup-error"></div>
   </div>
@@ -99,12 +100,12 @@
 
   <!-- Header -->
   <header class="reader-header" id="reader-header">
-    <button class="hdr-btn" id="btn-back-setup" title="Quay lại">←</button>
+    <button class="hdr-btn" id="btn-back-setup" title="Quay lại"><i class="ti ti-arrow-back" aria-hidden="true"></i></button>
     <div class="hdr-title" id="hdr-book-title">Đang tải...</div>
     <div class="hdr-actions">
-      <button class="hdr-btn" id="btn-search-chap" title="Tìm kiếm">🔍</button>
-      <button class="hdr-btn" id="btn-toc" title="Mục lục">☰</button>
-      <button class="hdr-btn" id="btn-settings" title="Cài đặt">⚙</button>
+      <button class="hdr-btn" id="btn-search-chap" title="Tìm kiếm"><i class="ti ti-search" aria-hidden="true"></i></button>
+      <button class="hdr-btn" id="btn-toc" title="Mục lục"><i class="ti ti-list" aria-hidden="true"></i></button>
+      <button class="hdr-btn" id="btn-settings" title="Cài đặt"><i class="ti ti-settings" aria-hidden="true"></i></button>
     </div>
   </header>
 
@@ -112,9 +113,9 @@
   <div class="search-bar" id="search-bar" style="display:none">
     <input type="text" id="search-input" placeholder="Tìm trong chương..." autocomplete="off">
     <span class="search-count" id="search-count"></span>
-    <button class="hdr-btn" id="btn-search-prev">↑</button>
-    <button class="hdr-btn" id="btn-search-next">↓</button>
-    <button class="hdr-btn" id="btn-search-close">✕</button>
+    <button class="hdr-btn" id="btn-search-prev"><i class="ti ti-arrow-up" aria-hidden="true"></i></button>
+    <button class="hdr-btn" id="btn-search-next"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>
+    <button class="hdr-btn" id="btn-search-close"><i class="ti ti-x" aria-hidden="true"></i></button>
   </div>
 
   <!-- Content -->
@@ -122,9 +123,9 @@
     <div class="chapter-title" id="chapter-title"></div>
     <div class="chapter-body" id="chapter-body"></div>
     <div class="chapter-nav">
-      <button class="nav-btn" id="btn-prev-chap">← Chương trước</button>
+      <button class="nav-btn" id="btn-prev-chap"><i class="ti ti-chevron-left" aria-hidden="true"></i> Chương trước</button>
       <span class="nav-info" id="nav-info"></span>
-      <button class="nav-btn" id="btn-next-chap">Chương sau →</button>
+      <button class="nav-btn" id="btn-next-chap">Chương sau <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
     </div>
   </main>
 
@@ -133,7 +134,7 @@
   <aside class="drawer" id="toc-drawer">
     <div class="drawer-header">
       <h3>Mục lục</h3>
-      <button class="drawer-close" id="toc-close">✕</button>
+      <button class="drawer-close" id="toc-close"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
     <div class="toc-search-wrap">
       <input type="text" id="toc-search" placeholder="Tìm chương..." class="toc-search">
@@ -146,7 +147,7 @@
   <aside class="drawer drawer-right" id="settings-drawer">
     <div class="drawer-header">
       <h3>Cài đặt</h3>
-      <button class="drawer-close" id="settings-close">✕</button>
+      <button class="drawer-close" id="settings-close"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
     <div class="settings-body">
 
