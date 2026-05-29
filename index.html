@@ -32,6 +32,10 @@
       <!-- Book cards rendered here -->
     </div>
 
+    <div class="stats-panel" id="stats-content">
+      <!-- rendered by renderStats() -->
+    </div>
+
     <div class="library-empty" id="library-empty" style="display:none">
       <div class="library-empty-icon">📚</div>
       <p>Chưa có sách nào.<br>Bấm <strong>+</strong> để thêm file EPUB.</p>
@@ -98,10 +102,20 @@
     <button class="hdr-btn" id="btn-back-setup" title="Quay lại">←</button>
     <div class="hdr-title" id="hdr-book-title">Đang tải...</div>
     <div class="hdr-actions">
+      <button class="hdr-btn" id="btn-search-chap" title="Tìm kiếm">🔍</button>
       <button class="hdr-btn" id="btn-toc" title="Mục lục">☰</button>
       <button class="hdr-btn" id="btn-settings" title="Cài đặt">⚙</button>
     </div>
   </header>
+
+  <!-- Search bar (hidden by default) -->
+  <div class="search-bar" id="search-bar" style="display:none">
+    <input type="text" id="search-input" placeholder="Tìm trong chương..." autocomplete="off">
+    <span class="search-count" id="search-count"></span>
+    <button class="hdr-btn" id="btn-search-prev">↑</button>
+    <button class="hdr-btn" id="btn-search-next">↓</button>
+    <button class="hdr-btn" id="btn-search-close">✕</button>
+  </div>
 
   <!-- Content -->
   <main class="reader-content" id="reader-content">

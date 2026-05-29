@@ -133,7 +133,7 @@ function renderLibraryGrid() {
       </div>
       <div class="book-info">
         <div class="book-title">${book.title}</div>
-        <div class="book-meta">${book.chapCount} chương${pct > 0 ? ` · ${pct}%` : ''}</div>
+        <div class="book-meta">${book.author ? `${book.author} · ` : ''}${book.chapCount} chương${pct > 0 ? ` · ${pct}%` : ''}</div>
       </div>
     `;
 
@@ -170,6 +170,7 @@ async function addBook(file) {
     const entry = {
       bookId,
       title: result.title,
+      author: result.author || '',
       chapCount: result.chapters.length,
       addedAt: Date.now(),
       coverDataUrl: result.coverDataUrl || null,
@@ -267,6 +268,8 @@ async function parseEpub(file) {
 
   // Parse spine order
   const spineMatches = [...opfXml.matchAll(/<itemref[^>]+idref="([^"]+)"/g)].map(m => m[1]);
+  const bookAuthor = opfXml.match(/<dc:creator[^>]*>([^<]+)<\/dc:creator>/i)?.[1]?.trim() || '';
+
   // Parse manifest
   const manifestItems = {};
   for (const m of opfXml.matchAll(/<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*media-type="([^"]+)"/g)) {
@@ -306,7 +309,7 @@ async function parseEpub(file) {
   // Extract cover image
   const coverDataUrl = await extractCover(zip, opfDir, opfXml, manifestItems);
 
-  return { title: bookTitle, chapters, coverDataUrl };
+  return { title: bookTitle, author: bookAuthor, chapters, coverDataUrl };
 }
 
 // Tìm cover image trong EPUB, resize xuống ~200px width, trả về data URL (hoặc null)
@@ -599,8 +602,17 @@ function translateAndInsert(text, container) {
 
 
 // ── Chapter Navigation ────────────────────────────────────────────────────────
-function goToChapter(idx) {
+function goToChapter(idx, restoreScroll = false) {
   if (idx < 0 || idx >= state.chapters.length) return;
+
+  // Lưu scroll position của chương hiện tại trước khi rời
+  if (state.currentChap !== idx) {
+    const rc = document.getElementById('reader-content');
+    if (rc && rc.scrollTop > 0) {
+      lsSet(`scroll_${state.epub?.title}_${state.currentChap}`, rc.scrollTop);
+    }
+  }
+
   state.currentChap = idx;
   lsSet('lastChap_' + (state.epub?.title || ''), idx);
 
@@ -630,8 +642,61 @@ function goToChapter(idx) {
   // Render async so UI can update
   setTimeout(() => {
     renderChapterContent(chap.bodyHTML);
-    document.getElementById('reader-content').scrollTo(0, 0);
+    const rc = document.getElementById('reader-content');
+    if (restoreScroll) {
+      const saved = lsGet(`scroll_${state.epub?.title}_${idx}`, 0);
+      rc.scrollTo(0, saved);
+    } else {
+      rc.scrollTo(0, 0);
+    }
+    // Track reading stats
+    trackReadChapter(idx);
   }, 30);
+}
+
+// ── Reading Stats ─────────────────────────────────────────────────────────────
+function trackReadChapter(chapIdx) {
+  if (!state.epub) return;
+  const title = state.epub.title;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const readKey = `read_${title}`;
+  const readSet = new Set(JSON.parse(localStorage.getItem(readKey) || '[]'));
+  readSet.add(chapIdx);
+  localStorage.setItem(readKey, JSON.stringify([...readSet]));
+
+  const streakKey = 'reading_streak';
+  const streak = JSON.parse(localStorage.getItem(streakKey) || '{"lastDate":"","count":0}');
+  if (streak.lastDate !== today) {
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    streak.count = streak.lastDate === yesterday ? streak.count + 1 : 1;
+    streak.lastDate = today;
+    localStorage.setItem(streakKey, JSON.stringify(streak));
+  }
+}
+
+function getReadingStats() {
+  const streak = JSON.parse(localStorage.getItem('reading_streak') || '{"lastDate":"","count":0}');
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const activeStreak = (streak.lastDate === today || streak.lastDate === yesterday) ? streak.count : 0;
+  let totalRead = 0;
+  for (const book of state.library) {
+    const readSet = JSON.parse(localStorage.getItem(`read_${book.title}`) || '[]');
+    totalRead += readSet.length;
+  }
+  return { streak: activeStreak, totalRead, booksCount: state.library.length };
+}
+
+function renderStats() {
+  const el = document.getElementById('stats-content');
+  if (!el) return;
+  const { streak, totalRead, booksCount } = getReadingStats();
+  el.innerHTML = `
+    <div class="stat-card"><div class="stat-num">${streak}</div><div class="stat-label">🔥 Ngày streak</div></div>
+    <div class="stat-card"><div class="stat-num">${totalRead}</div><div class="stat-label">📖 Chương đã đọc</div></div>
+    <div class="stat-card"><div class="stat-num">${booksCount}</div><div class="stat-label">📚 Sách trong thư viện</div></div>
+  `;
 }
 
 // ── Popup ─────────────────────────────────────────────────────────────────────
@@ -1145,7 +1210,7 @@ document.getElementById('btn-start').addEventListener('click', async () => {
     buildToc();
     // Restore last read position
     const lastChap = lsGet('lastChap_' + (state.epub?.title || ''), 0);
-    goToChapter(Math.min(lastChap, state.chapters.length - 1));
+    goToChapter(Math.min(lastChap, state.chapters.length - 1), true);
   } catch(e) {
     btn.textContent = 'Bắt đầu đọc →';
     btn.disabled = false;
@@ -1156,7 +1221,8 @@ document.getElementById('btn-start').addEventListener('click', async () => {
 // ── Reader Event Listeners ────────────────────────────────────────────────────
 document.getElementById('btn-back-setup').addEventListener('click', () => {
   showScreen('library');
-  renderLibraryGrid(); // refresh % đọc
+  renderLibraryGrid();
+  renderStats();
 });
 
 document.getElementById('btn-toc').addEventListener('click', openToc);
@@ -1356,6 +1422,83 @@ function downloadText(text, filename) {
   URL.revokeObjectURL(a.href);
 }
 
+// ── Chapter Search ────────────────────────────────────────────────────────────
+let searchMatches = [], searchIdx = 0;
+
+function openSearch() {
+  document.getElementById('search-bar').style.display = 'flex';
+  document.getElementById('search-input').focus();
+}
+function closeSearch() {
+  document.getElementById('search-bar').style.display = 'none';
+  document.getElementById('search-input').value = '';
+  clearSearchHighlights();
+  searchMatches = []; searchIdx = 0;
+}
+function clearSearchHighlights() {
+  document.querySelectorAll('mark.cv-search').forEach(m => {
+    m.replaceWith(document.createTextNode(m.textContent));
+  });
+  document.getElementById('chapter-body').normalize();
+}
+function doSearch(query) {
+  clearSearchHighlights();
+  searchMatches = []; searchIdx = 0;
+  if (!query.trim()) { document.getElementById('search-count').textContent = ''; return; }
+
+  const body = document.getElementById('chapter-body');
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+
+  const q = query.toLowerCase();
+  for (const node of nodes) {
+    const text = node.textContent;
+    const lower = text.toLowerCase();
+    let i = 0, parts = [], last = 0;
+    while ((i = lower.indexOf(q, last)) !== -1) {
+      if (i > last) parts.push(document.createTextNode(text.slice(last, i)));
+      const mark = document.createElement('mark');
+      mark.className = 'cv-search';
+      mark.textContent = text.slice(i, i + q.length);
+      parts.push(mark);
+      searchMatches.push(mark);
+      last = i + q.length;
+    }
+    if (parts.length) {
+      if (last < text.length) parts.push(document.createTextNode(text.slice(last)));
+      node.replaceWith(...parts);
+    }
+  }
+
+  document.getElementById('search-count').textContent =
+    searchMatches.length ? `1/${searchMatches.length}` : 'Không tìm thấy';
+  if (searchMatches.length) jumpToMatch(0);
+}
+function jumpToMatch(i) {
+  searchMatches.forEach(m => m.classList.remove('cv-search-active'));
+  if (!searchMatches.length) return;
+  searchIdx = (i + searchMatches.length) % searchMatches.length;
+  const m = searchMatches[searchIdx];
+  m.classList.add('cv-search-active');
+  m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  document.getElementById('search-count').textContent = `${searchIdx + 1}/${searchMatches.length}`;
+}
+
+document.getElementById('btn-search-chap').addEventListener('click', openSearch);
+document.getElementById('btn-search-close').addEventListener('click', closeSearch);
+document.getElementById('btn-search-next').addEventListener('click', () => jumpToMatch(searchIdx + 1));
+document.getElementById('btn-search-prev').addEventListener('click', () => jumpToMatch(searchIdx - 1));
+let searchDebounce;
+document.getElementById('search-input').addEventListener('input', function() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => doSearch(this.value), 300);
+});
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') jumpToMatch(searchIdx + 1);
+  if (e.key === 'Escape') closeSearch();
+});
+
 // ── Swipe để chuyển chương ────────────────────────────────────────────────────
 (function() {
   const el = document.getElementById('reader-content');
@@ -1403,6 +1546,7 @@ document.addEventListener('mousedown', e => {
 
   // Render library immediately (before engine loads)
   renderLibraryGrid();
+  renderStats();
 
   // Engine loads in background — library is interactive immediately
   autoLoadEngineAndMeta(); // no await — parallel
