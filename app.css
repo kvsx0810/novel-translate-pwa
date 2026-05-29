@@ -170,7 +170,7 @@ body { background: var(--bg); color: var(--text); }
 .step.done .step-num { background: var(--green); color: var(--bg); }
 .step-title { font-size: 14px; font-weight: 600; }
 .step-desc { font-size: 12px; color: var(--text3); margin-top: 3px; }
-.step-badge { margin-left: auto; font-size: 18px; flex-shrink: 0; }
+.step-badge { margin-left: auto; font-size: 20px; flex-shrink: 0; display: flex; align-items: center; }
 .step-header code { font-family: monospace; background: var(--bg4); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
 
 .btn-upload {

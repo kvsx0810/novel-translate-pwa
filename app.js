@@ -200,7 +200,7 @@ async function openBook(bookId) {
   // Show setup screen with loading state
   showScreen('setup');
   document.getElementById('epub-status').textContent = 'Đang mở sách...';
-  document.getElementById('epub-badge').textContent = '⏳';
+  document.getElementById('epub-badge').innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i>';
   document.getElementById('step-epub').classList.remove('done','error');
 
   try {
@@ -696,9 +696,9 @@ function renderStats() {
   if (!el) return;
   const { streak, totalRead, booksCount } = getReadingStats();
   el.innerHTML = `
-    <div class="stat-card"><div class="stat-num">${streak}</div><div class="stat-label">🔥 Ngày streak</div></div>
-    <div class="stat-card"><div class="stat-num">${totalRead}</div><div class="stat-label">📖 Chương đã đọc</div></div>
-    <div class="stat-card"><div class="stat-num">${booksCount}</div><div class="stat-label">📚 Sách trong thư viện</div></div>
+    <div class="stat-card"><div class="stat-num">${streak}</div><div class="stat-label"><i class="ti ti-flame" aria-hidden="true"></i> Ngày streak</div></div>
+    <div class="stat-card"><div class="stat-num">${totalRead}</div><div class="stat-label"><i class="ti ti-book-2" aria-hidden="true"></i> Chương đã đọc</div></div>
+    <div class="stat-card"><div class="stat-num">${booksCount}</div><div class="stat-label"><i class="ti ti-books" aria-hidden="true"></i> Sách trong thư viện</div></div>
   `;
 }
 
@@ -1066,13 +1066,13 @@ function setStepDone(step, msg) {
   const el = document.getElementById(`step-${step}`);
   el.classList.add('done'); el.classList.remove('error');
   document.getElementById(`${step}-status`).textContent = msg;
-  document.getElementById(`${step}-badge`).textContent = '✓';
+  document.getElementById(`${step}-badge`).innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>';
 }
 function setStepError(step, msg) {
   const el = document.getElementById(`step-${step}`);
   el.classList.add('error'); el.classList.remove('done');
   document.getElementById(`${step}-status`).textContent = msg;
-  document.getElementById(`${step}-badge`).textContent = '✗';
+  document.getElementById(`${step}-badge`).innerHTML = '<i class="ti ti-x" aria-hidden="true"></i>';
   document.getElementById('setup-error').textContent = msg;
 }
 
@@ -1178,7 +1178,13 @@ async function autoLoadEngineAndMeta() {
 }
 function updateLibraryEngineStatus(msg) {
   const el = document.getElementById('library-engine-status');
-  if (el) el.textContent = msg;
+  if (!el) return;
+  const icon = msg.startsWith('✓') || msg.includes('sẵn sàng')
+    ? '<i class="ti ti-check" aria-hidden="true"></i>'
+    : msg.startsWith('✗') || msg.includes('Lỗi')
+      ? '<i class="ti ti-x" aria-hidden="true"></i>'
+      : '<i class="ti ti-loader-2" aria-hidden="true"></i>';
+  el.innerHTML = icon + ' ' + msg.replace(/^[✓✗]\s*/, '');
 }
 
 // Load EPUB + save to IDB for restore on reload
@@ -1220,6 +1226,17 @@ document.getElementById('btn-start').addEventListener('click', async () => {
     document.getElementById('setup-error').textContent = '✗ ' + e.message;
   }
 });
+
+// ── Scroll persistence ────────────────────────────────────────────────────────
+let scrollSaveTimer = null;
+document.getElementById('reader-content').addEventListener('scroll', () => {
+  if (!state.epub || state.currentChap == null) return;
+  clearTimeout(scrollSaveTimer);
+  scrollSaveTimer = setTimeout(() => {
+    const rc = document.getElementById('reader-content');
+    lsSet(`scroll_${state.epub.title}_${state.currentChap}`, rc.scrollTop);
+  }, 300);
+}, { passive: true });
 
 // ── Reader Event Listeners ────────────────────────────────────────────────────
 document.getElementById('btn-back-setup').addEventListener('click', () => {
