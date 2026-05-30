@@ -197,6 +197,10 @@ async function openBook(bookId) {
   const entry = state.library.find(b => b.bookId === bookId);
   if (!entry) return;
 
+  // Reset guard để startReading có thể chạy lại cho sách mới
+  _startingReader = false;
+  setupReady.epub = false;
+
   // Show setup screen with loading state
   showScreen('setup');
   document.getElementById('epub-status').textContent = 'Đang mở sách...';
@@ -1057,9 +1061,34 @@ function closeSettings() {
 
 // ── Setup Screen Logic ────────────────────────────────────────────────────────
 let setupReady = { engine: false, epub: false };
+let _startingReader = false; // guard tránh gọi 2 lần
+
+async function startReading() {
+  if (_startingReader) return;
+  _startingReader = true;
+  const btn = document.getElementById('btn-start');
+  btn.textContent = 'Đang khởi động...';
+  btn.disabled = true;
+  try {
+    await initEngine();
+    showScreen('reader');
+    applyReaderSettings();
+    buildToc();
+    const lastChap = lsGet('lastChap_' + (state.epub?.title || ''), 0);
+    goToChapter(Math.min(lastChap, state.chapters.length - 1), true);
+  } catch(e) {
+    _startingReader = false;
+    btn.textContent = 'Bắt đầu đọc →';
+    btn.disabled = false;
+    document.getElementById('setup-error').textContent = '✗ ' + e.message;
+  }
+}
 
 function checkSetupReady() {
-  document.getElementById('btn-start').disabled = !(setupReady.engine && setupReady.epub);
+  const ready = setupReady.engine && setupReady.epub;
+  document.getElementById('btn-start').disabled = !ready;
+  // Tự động vào đọc luôn khi cả engine lẫn epub đều sẵn sàng
+  if (ready) startReading();
 }
 
 function setStepDone(step, msg) {
@@ -1206,26 +1235,8 @@ document.getElementById('input-epub').addEventListener('change', async function(
   checkSetupReady();
 });
 
-// Start reading
-document.getElementById('btn-start').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-start');
-  btn.textContent = 'Đang khởi động engine...';
-  btn.disabled = true;
-  try {
-    await initEngine();
-    // Switch to reader
-    showScreen('reader');
-    applyReaderSettings();
-    buildToc();
-    // Restore last read position
-    const lastChap = lsGet('lastChap_' + (state.epub?.title || ''), 0);
-    goToChapter(Math.min(lastChap, state.chapters.length - 1), true);
-  } catch(e) {
-    btn.textContent = 'Bắt đầu đọc →';
-    btn.disabled = false;
-    document.getElementById('setup-error').textContent = '✗ ' + e.message;
-  }
-});
+// Start reading — fallback nếu auto-trigger không chạy
+document.getElementById('btn-start').addEventListener('click', () => startReading());
 
 // ── Scroll persistence ────────────────────────────────────────────────────────
 let scrollSaveTimer = null;
