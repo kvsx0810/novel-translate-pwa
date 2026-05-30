@@ -26,7 +26,12 @@
           <h1>Đọc Truyện CV</h1>
         </div>
       </div>
-      <div class="library-engine-status" id="library-engine-status"><i class="ti ti-loader-2" aria-hidden="true"></i> Đang tải engine...</div>
+      <div class="library-header-right">
+        <div class="library-engine-status" id="library-engine-status"><i class="ti ti-loader-2" aria-hidden="true"></i> Đang tải engine...</div>
+        <button class="btn-r2-check" id="btn-r2-check" title="Kiểm tra sách mới từ R2">
+          <i class="ti ti-cloud-download" aria-hidden="true"></i>
+        </button>
+      </div>
     </div>
 
     <div id="library-grid" class="library-grid">
@@ -257,6 +262,27 @@
 
 
 </div><!-- /screen-reader -->
+
+<!-- ── R2 BRIDGE MODAL ─────────────────────────────────────────────────────── -->
+<div id="r2-modal-overlay" class="r2-modal-overlay"></div>
+<div id="r2-modal" class="r2-modal">
+  <div class="r2-modal-header">
+    <div class="r2-modal-tabs">
+      <button class="r2-tab-btn active" data-tab="inbox">
+        <i class="ti ti-inbox" aria-hidden="true"></i> Sách đang chờ
+      </button>
+      <button class="r2-tab-btn" data-tab="settings">
+        <i class="ti ti-settings" aria-hidden="true"></i> Cài đặt
+      </button>
+    </div>
+    <button class="r2-modal-close" id="r2-modal-close">
+      <i class="ti ti-x" aria-hidden="true"></i>
+    </button>
+  </div>
+  <div class="r2-modal-body" id="r2-modal-body">
+    <!-- Rendered dynamically -->
+  </div>
+</div>
 
 <!-- Scripts -->
 <script src="app.js"></script>

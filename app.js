@@ -1,6 +1,21 @@
 // ── app.js ────────────────────────────────────────────────────────────────────
 'use strict';
 
+// ── R2 Bridge Config ──────────────────────────────────────────────────────────
+const R2_CONFIG_KEY = 'r2BridgeConfig';
+
+function getR2Config() {
+  return lsGetRaw(R2_CONFIG_KEY, { workerUrl: '', secretKey: '', autoCheck: true });
+}
+function saveR2Config(cfg) {
+  lsSetRaw(R2_CONFIG_KEY, cfg);
+}
+// lsGet/lsSet raw (dùng trước khi lsGet được define, nên tự inline)
+function lsGetRaw(k, def) {
+  try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : def; } catch { return def; }
+}
+function lsSetRaw(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
   engine: null,
@@ -1569,6 +1584,240 @@ document.addEventListener('mousedown', e => {
   renderPopup();
 }, { capture: true });
 
+// ── Web Share Target (nhận EPUB share từ file manager) ───────────────────────
+async function handleWebShareTarget() {
+  // Service Worker intercepts the POST và store vào Cache/IDB
+  // App.js đọc lại qua special channel
+  try {
+    // SW sẽ redirect về index.html?share-target=1 với file trong shareCache
+    const cache = await caches.open('share-target-v1');
+    const req = await cache.match('/shared-epub');
+    if (!req) return;
+
+    const blob = await req.blob();
+    await cache.delete('/shared-epub');
+
+    if (blob.size === 0) return;
+
+    // Lấy tên file từ header nếu có
+    const disposition = req.headers.get('x-filename') || 'shared.epub';
+    const file = new File([blob], disposition, { type: 'application/epub+zip' });
+    await addBook(file);
+  } catch (e) {
+    console.warn('Share target error:', e);
+  }
+}
+
+// ── R2 Bridge: Poll + Download ────────────────────────────────────────────────
+let r2PollTimer = null;
+
+async function r2Fetch(path, options = {}) {
+  const cfg = getR2Config();
+  if (!cfg.workerUrl || !cfg.secretKey) throw new Error('Chưa cấu hình R2 Bridge');
+  const url = cfg.workerUrl.replace(/\/$/, '') + path;
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'X-Secret-Key': cfg.secretKey, ...(options.headers || {}) },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  return res;
+}
+
+async function r2CheckPending() {
+  const res = await r2Fetch('/pending');
+  const data = await res.json();
+  return data.files || []; // [{key, filename, size, uploadedAt}]
+}
+
+async function r2DownloadAndAdd(file) {
+  // file = {key, filename, size, uploadedAt}
+  const encodedKey = encodeURIComponent(file.key);
+  const res = await r2Fetch(`/download/${encodedKey}`);
+  const blob = await res.blob();
+  const epubFile = new File([blob], file.filename, { type: 'application/epub+zip' });
+  await addBook(epubFile);
+}
+
+// Poll mỗi 30 giây, hiển thị badge nếu có sách mới
+function startR2Poll() {
+  stopR2Poll();
+  const cfg = getR2Config();
+  if (!cfg.workerUrl || !cfg.secretKey || !cfg.autoCheck) return;
+
+  const doCheck = async () => {
+    try {
+      const files = await r2CheckPending();
+      if (files.length > 0) {
+        updateR2Badge(files.length);
+      }
+    } catch (e) {
+      // Poll failure — silent (không làm phiền user)
+    }
+  };
+
+  doCheck(); // immediate first check
+  r2PollTimer = setInterval(doCheck, 30000);
+}
+
+function stopR2Poll() {
+  if (r2PollTimer) { clearInterval(r2PollTimer); r2PollTimer = null; }
+}
+
+function updateR2Badge(count) {
+  const btn = document.getElementById('btn-r2-check');
+  if (!btn) return;
+  const badge = btn.querySelector('.r2-badge');
+  if (count > 0) {
+    if (badge) { badge.textContent = count; }
+    else {
+      const b = document.createElement('span');
+      b.className = 'r2-badge';
+      b.textContent = count;
+      btn.appendChild(b);
+    }
+    btn.classList.add('r2-has-pending');
+  } else {
+    if (badge) badge.remove();
+    btn.classList.remove('r2-has-pending');
+  }
+}
+
+// ── R2 Modal ──────────────────────────────────────────────────────────────────
+function openR2Modal() {
+  const modal = document.getElementById('r2-modal');
+  modal.classList.add('open');
+  r2RenderTab('inbox'); // default tab
+}
+function closeR2Modal() {
+  document.getElementById('r2-modal').classList.remove('open');
+}
+
+function r2RenderTab(tab) {
+  document.querySelectorAll('.r2-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const body = document.getElementById('r2-modal-body');
+
+  if (tab === 'inbox') {
+    r2RenderInbox(body);
+  } else if (tab === 'settings') {
+    r2RenderSettings(body);
+  }
+}
+
+async function r2RenderInbox(container) {
+  container.innerHTML = `<div class="r2-loading"><div class="spinner"></div> Đang kiểm tra...</div>`;
+  try {
+    const files = await r2CheckPending();
+    updateR2Badge(files.length);
+
+    if (files.length === 0) {
+      container.innerHTML = `<div class="r2-empty"><i class="ti ti-inbox"></i><p>Không có sách nào đang chờ</p></div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    for (const file of files) {
+      const item = document.createElement('div');
+      item.className = 'r2-file-item';
+      const sizeKB = (file.size / 1024).toFixed(0);
+      const sizeMB = file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${sizeKB} KB`;
+      const uploaded = file.uploadedAt ? new Date(file.uploadedAt).toLocaleString('vi-VN') : '';
+
+      item.innerHTML = `
+        <div class="r2-file-info">
+          <div class="r2-file-name">${file.filename}</div>
+          <div class="r2-file-meta">${sizeMB}${uploaded ? ' · ' + uploaded : ''}</div>
+        </div>
+        <button class="r2-download-btn" data-key="${file.key}" data-name="${file.filename}">
+          <i class="ti ti-download"></i> Tải về
+        </button>
+      `;
+
+      item.querySelector('.r2-download-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner spinner-sm"></div>';
+        try {
+          await r2DownloadAndAdd(file);
+          item.remove();
+          // Nếu hết file thì hiển thị empty
+          if (!container.querySelector('.r2-file-item')) {
+            container.innerHTML = `<div class="r2-empty"><i class="ti ti-check"></i><p>Đã tải tất cả sách</p></div>`;
+            updateR2Badge(0);
+          }
+        } catch (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="ti ti-download"></i> Tải về';
+          showR2Error(container, '✗ ' + err.message);
+        }
+      });
+
+      container.appendChild(item);
+    }
+  } catch (err) {
+    const cfg = getR2Config();
+    if (!cfg.workerUrl || !cfg.secretKey) {
+      container.innerHTML = `<div class="r2-empty"><i class="ti ti-settings"></i><p>Chưa cấu hình R2 Bridge.<br>Bấm tab <strong>Cài đặt</strong> để thiết lập.</p></div>`;
+    } else {
+      container.innerHTML = `<div class="r2-empty r2-error"><i class="ti ti-wifi-off"></i><p>Lỗi kết nối:<br>${err.message}</p></div>`;
+    }
+  }
+}
+
+function r2RenderSettings(container) {
+  const cfg = getR2Config();
+  container.innerHTML = `
+    <div class="r2-settings">
+      <div class="r2-setting-row">
+        <label>Worker URL</label>
+        <input type="url" id="r2-worker-url" placeholder="https://novel-epub-bridge.xxx.workers.dev" value="${cfg.workerUrl || ''}">
+      </div>
+      <div class="r2-setting-row">
+        <label>Secret Key</label>
+        <input type="password" id="r2-secret-key" placeholder="Nhập secret key..." value="${cfg.secretKey || ''}">
+      </div>
+      <div class="r2-setting-row r2-toggle-row">
+        <label>Tự động kiểm tra (30s)</label>
+        <label class="r2-toggle">
+          <input type="checkbox" id="r2-auto-check" ${cfg.autoCheck !== false ? 'checked' : ''}>
+          <span class="r2-toggle-slider"></span>
+        </label>
+      </div>
+      <button class="btn-primary r2-save-btn" id="r2-save-config">Lưu cài đặt</button>
+      <div id="r2-save-status"></div>
+    </div>
+  `;
+
+  container.querySelector('#r2-save-config').addEventListener('click', () => {
+    const newCfg = {
+      workerUrl: container.querySelector('#r2-worker-url').value.trim(),
+      secretKey: container.querySelector('#r2-secret-key').value.trim(),
+      autoCheck: container.querySelector('#r2-auto-check').checked,
+    };
+    saveR2Config(newCfg);
+    container.querySelector('#r2-save-status').textContent = '✓ Đã lưu!';
+    setTimeout(() => {
+      if (container.querySelector('#r2-save-status'))
+        container.querySelector('#r2-save-status').textContent = '';
+    }, 2000);
+    // Restart poll với config mới
+    startR2Poll();
+  });
+}
+
+function showR2Error(container, msg) {
+  let err = container.querySelector('.r2-err-msg');
+  if (!err) {
+    err = document.createElement('div');
+    err.className = 'r2-err-msg setup-error';
+    container.appendChild(err);
+  }
+  err.textContent = msg;
+  setTimeout(() => err.remove(), 4000);
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   await loadSavedState();
@@ -1584,6 +1833,22 @@ document.addEventListener('mousedown', e => {
 
   // Migrate legacy single-epub storage nếu có
   tryRestoreEpub();
+
+  // R2 Bridge: bắt đầu poll nếu đã cấu hình
+  startR2Poll();
+
+  // Web Share Target: nhận EPUB share từ file manager / app khác
+  if (location.search.includes('share-target') || document.referrer === '') {
+    handleWebShareTarget();
+  }
+
+  // R2 Modal event listeners
+  document.getElementById('btn-r2-check').addEventListener('click', openR2Modal);
+  document.getElementById('r2-modal-close').addEventListener('click', closeR2Modal);
+  document.getElementById('r2-modal-overlay').addEventListener('click', closeR2Modal);
+  document.querySelectorAll('.r2-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => r2RenderTab(btn.dataset.tab));
+  });
 })();
 
 async function tryRestoreEpub() {

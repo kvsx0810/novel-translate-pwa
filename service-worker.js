@@ -1,5 +1,6 @@
 // service-worker.js
 const CACHE = 'novel-reader-cv-v4';
+const SHARE_CACHE = 'share-target-v1';
 
 const CACHE_FIRST_PATTERNS = [
   '/novel-translate-pwa/core/',
@@ -22,13 +23,37 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE && k !== SHARE_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
+// ── Web Share Target: intercept POST, store EPUB, redirect ───────────────────
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // Intercept share target POST (từ manifest share_target)
+  if (e.request.method === 'POST' && url.pathname.endsWith('/index.html')) {
+    e.respondWith((async () => {
+      try {
+        const formData = await e.request.formData();
+        const epubFile = formData.get('epub');
+        if (epubFile && epubFile instanceof File) {
+          const cache = await caches.open(SHARE_CACHE);
+          const headers = new Headers({
+            'Content-Type': epubFile.type || 'application/epub+zip',
+            'x-filename': epubFile.name,
+          });
+          await cache.put('/shared-epub', new Response(epubFile, { headers }));
+        }
+      } catch (err) {
+        console.warn('[SW] Share target error:', err);
+      }
+      // Redirect về app
+      return Response.redirect('./index.html?share-target=1', 303);
+    })());
+    return;
+  }
 
   // Never cache these
   if (NEVER_CACHE.some(p => url.href.includes(p))) {
